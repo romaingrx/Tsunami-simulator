@@ -130,10 +130,15 @@ def computeElem(Tsunami):
     
     for iElem in range(theMesh.nElem):
         mapCoord = theMesh.elem[iElem];
-        mapElem  = [3*iElem + j for j in range(3)]
+#        mapElem  = [3*iElem + j for j in range(3)]
         
-        xloc     = theMesh.x[mapCoord]
-        yloc     = theMesh.y[mapCoord]
+        xloc     = X[mapCoord]
+        yloc     = Y[mapCoord]
+        zloc     = Z[mapCoord]
+        
+        eloc     = E[iElem,:]
+        uloc     = U[iElem,:]
+        vloc     = V[iElem,:]
         
         dxdxsi   = xloc @ dphidxsi
         dxdeta   = xloc @ dphideta
@@ -146,27 +151,23 @@ def computeElem(Tsunami):
         
         
         
-        xh = phi @ X[mapCoord]
-        yh = phi @ Y[mapCoord]
-        zh = phi @ Z[mapCoord]
-        eh = phi @ E[iElem,:]
-        uh = phi @ U[iElem,:]
-        vh = phi @ V[iElem,:]
+#        xh = phi @ xloc
+#        yh = phi @ yloc
+#        zh = phi @ zloc
+        eh = phi @ eloc
+        uh = phi @ uloc
+        vh = phi @ vloc
         
         
-        lat = (4*R*R-x*x-y*y)/(4*R*R+x*x+y*y)
-        term = (4*R*R+x*x+y*y)/(4*R*R)
-        f = 2*omega*np.sin(np.arcsin(((4*R*R - x*x - y*y)*180) / ((4*R*R + x*x + y*y)*np.pi) ))
-        iterE[iElem,:] += sum((np.outer(zh*uh*term,dphidx)+np.outer(zh*1*term,dphidy))) + (phi @ ((zh*(xh*uh+yh*vh))/(4*R*R)))
-        iterU[iElem,:] += phi @ 
-        
-#        iterE[iElem,:] += (jac * weight) * (3 * (z*u*dphidx + z*v*dphidy) + (z*(x*u+y*v)/(R*R)) * phi @ np.ones(3)) 
-#        iterU[iElem,:] += (jac * weight) * (3 * (e*g*term*dphidx) + (f*1-gamma*u + g*x*e/(2*R*R)) * phi @ np.ones(3))
-    print(iterU[:,:])
+        term = (4*R*R+xloc*xloc+yloc*yloc)/(4*R*R)
+        f = 2*omega*np.sin(np.arcsin(((4*R*R - xloc*xloc - yloc*yloc)*180) / ((4*R*R + xloc*xloc + yloc*yloc)*np.pi) ))
+        iterE[iElem,:] += (sum((np.outer(uh,dphidx) + np.outer(vh,dphidy)) *term*zloc*weight*jac) + (phi @ ((zloc*(xloc*uloc+yloc*vloc)/(4*R*R)) * weight * jac)))
+        iterU[iElem,:] += (sum((phi.T * (f*vh - gamma*uh) + np.outer(g*term*eh,dphidx))*weight*jac) + (phi @ (((g*xloc*eloc)/(2*R*R)) * weight *jac)))
+        iterV[iElem,:] += (sum((phi.T * (-f*uh - gamma*vh) + np.outer(g*eh*term ,dphidy)) * weight * jac) + phi @ (((g*xloc*eloc)/(2*R*R)) * weight *jac))
         
         
         
-    return 1
+    return
         
 
 # -------------------------------------------------------------------------
