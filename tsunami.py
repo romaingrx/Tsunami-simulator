@@ -89,10 +89,10 @@ def initialConditionOkada(x,y) :
 
 def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     theTsunami = Tsunami(theFile,U,V,E);
-    for t in range(nIter):
+    for n in range(nIter):
         iterCompute(theTsunami,dt);
-        if ((t % nSave) == 0):
-            theTsunami.writeFile(theResultFiles, t)
+        if ((n % nSave) == 0):
+            theTsunami.writeFile(theResultFiles, n)
             
     return [theTsunami.U,theTsunami.V,theTsunami.E]
 
@@ -169,7 +169,7 @@ def computeElem(Tsunami):
         
         
         term = (4*R*R+xloc*xloc+yloc*yloc)/(4*R*R)
-        f = 2*omega*np.sin(np.arcsin(((4*R*R - xloc*xloc - yloc*yloc)*180) / ((4*R*R + xloc*xloc + yloc*yloc)*np.pi) ))
+        f = 2 * omega * zloc / R
         iterE[iElem,:] += (sum((np.outer(uh,dphidx) + np.outer(vh,dphidy)) *term*zloc*weight*jac) + (phi @ ((zloc*(xloc*uloc+yloc*vloc)/(4*R*R)) * weight * jac)))
         iterU[iElem,:] += (sum((phi.T * (f*vh - gamma*uh) + np.outer(g*term*eh,dphidx))*weight*jac) + (phi @ (((g*xloc*eloc)/(2*R*R)) * weight *jac)))
         iterV[iElem,:] += (sum((phi.T * (-f*uh - gamma*vh) + np.outer(g*eh*term ,dphidy)) * weight * jac) + phi @ (((g*xloc*eloc)/(2*R*R)) * weight *jac))
@@ -214,8 +214,8 @@ def computeEdge(Tsunami):
         dx      = x[1] - x[0]
         dy      = y[1] - y[0]
         jac     = np.sqrt(dx*dx+dy*dy)
-        nx      = dy / jac
-        ny      = -dx / jac
+        nx      = -dy / jac
+        ny      = dx / jac
         unLeft  = U[iElemLeft][mapEdgeLeft] * nx + V[iElemLeft][mapEdgeLeft] * ny
         unRight = U[iElemRight][mapEdgeRight] * nx + V[iElemRight][mapEdgeRight] * ny       
         eLeft   = E[iElemLeft][mapEdgeLeft]
@@ -274,8 +274,6 @@ class IntegrationRule(object):
     print(" eta     = ",self.eta)
     print(" weights = ",self.weight)
     
-  def func(self,x):
-    return x
 
 # -------------------------------------------------------------------------
     
