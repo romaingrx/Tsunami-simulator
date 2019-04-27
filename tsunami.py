@@ -89,18 +89,27 @@ def initialConditionOkada(x,y) :
 
 def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     theTsunami = Tsunami(theFile,U,V,E);
-    theTsunami.initialize();
     for t in range(nIter):
-        iterCompute(theTsunami);
-        if ((t % dt) == 0):
-            theTsunami.writeFile(theResultFiles % t)
+        iterCompute(theTsunami,dt);
+        if ((t % nSave) == 0):
+            theTsunami.writeFile(theResultFiles, t)
             
     return [theTsunami.U,theTsunami.V,theTsunami.E]
 
 # -------------------------------------------------------------------------
     
-def iterCompute(Tsunami):
-    return 1
+def iterCompute(Tsunami,dt):
+    theSize = Tsunami.mesh.nElem
+    Tsunami.iterE = np.zeros([theSize,3])
+    Tsunami.iterU = np.zeros([theSize,3])
+    Tsunami.iterV = np.zeros([theSize,3])
+    computeElem(Tsunami);
+    computeEdge(Tsunami);
+    inverseMatrix(Tsunami);
+    Tsunami.E += dt * Tsunami.iterE
+    Tsunami.U += dt * Tsunami.iterU
+    Tsunami.V += dt * Tsunami.iterV
+    return 
 
 # -------------------------------------------------------------------------
     
@@ -166,17 +175,80 @@ def computeElem(Tsunami):
         iterV[iElem,:] += (sum((phi.T * (-f*uh - gamma*vh) + np.outer(g*eh*term ,dphidy)) * weight * jac) + phi @ (((g*xloc*eloc)/(2*R*R)) * weight *jac))
         
         
-        
     return
         
 
 # -------------------------------------------------------------------------
     
 def computeEdge(Tsunami):
-    return 1
+    theMesh = Tsunami.mesh;
+    theRule = Tsunami.rule1D;
+    theEdges= Tsunami.edges;
+    
+    U       = Tsunami.U;
+    V       = Tsunami.V;
+    E       = Tsunami.E;
+    iterU   = Tsunami.iterU;
+    iterV   = Tsunami.iterV;
+    iterE   = Tsunami.iterE;
+    X       = theMesh.x;
+    Y       = theMesh.y;
+    Z       = theMesh.zStar;
+    R       = Tsunami.R; 
+    g       = Tsunami.g
+    xsi    = theRule.xsi;
+    weight = theRule.weight;
+    phi = np.asarray([1.0-xsi,1.0+xsi])/ 2
+    for iEdge in range(theEdges.nBoundary,theEdges.nEdges):
+        nodes = theEdges.edges[iEdge][0:2]
+        x = X[nodes]
+        y = Y[nodes]
+        z = Z[nodes]
+        
+        mapEdgeLeft  = Tsunami.mapEdgeLeft[iEdge][1:3]
+        mapEdgeRight = Tsunami.mapEdgeRight[iEdge][1:3]
+        
+        iElemLeft = Tsunami.mapEdgeLeft[iEdge][0]
+        iElemRight = Tsunami.mapEdgeRight[iEdge][1]
+        
+        dx      = x[1] - x[0]
+        dy      = y[1] - y[0]
+        jac     = np.sqrt(dx*dx+dy*dy)
+        nx      = dy / jac
+        ny      = -dx / jac
+        unLeft  = U[iElemLeft][mapEdgeLeft] * nx + V[iElemLeft][mapEdgeLeft] * ny
+        unRight = U[iElemRight][mapEdgeRight] * nx + V[iElemRight][mapEdgeRight] * ny       
+        eLeft   = E[iElemLeft][mapEdgeLeft]
+        eRight = E[iElemRight][mapEdgeRight]        
+        
+        eStar   = 0.5 * ((eLeft - eRight)   + np.sqrt(z/g) * (unLeft + unRight))     
+        unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
+        
+        term = (4*R*R+x*x+y*y)/(4*R*R)
+
+        iterE[iElemLeft][mapEdgeLeft]   -= ((weight * z * unStar * term) @ phi) * jac / 2
+        iterE[iElemRight][mapEdgeRight] += ((weight * z * unStar * term) @ phi) * jac / 2
+        iterU[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * nx * g * jac / 2
+        iterU[iElemRight][mapEdgeRight] += ((weight * eStar * term) @ phi) * nx * g * jac / 2
+        iterV[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * ny * g * jac / 2
+        iterV[iElemRight][mapEdgeRight] += ((weight * eStar * term) @ phi) * ny * g * jac / 2
+    return 
 
 def inverseMatrix(Tsunami):
-    return 1
+    theMesh = Tsunami.mesh
+    iterU   = Tsunami.iterU;
+    iterV   = Tsunami.iterV;
+    iterE   = Tsunami.iterE;
+    Ainverse = np.array([[18.0,-6.0,-6.0],[-6.0,18.0,-6.0],[-6.0,-6.0,18.0]])
+    for iElem in range(theMesh.nElem) :
+      nodes = theMesh.elem[iElem]
+      x = theMesh.x[nodes]
+      y = theMesh.y[nodes]
+      jac = abs((x[0]-x[1]) * (y[0]-y[2]) - (x[0]-x[2]) * (y[0]-y[1]))    
+      iterE[iElem] = Ainverse @ iterE[iElem] / jac
+      iterU[iElem] = Ainverse @ iterU[iElem] / jac
+      iterV[iElem] = Ainverse @ iterV[iElem] / jac
+    return 
 # -------------------------------------------------------------------------
 # |//////////////////////////---- CLASS ----//////////////////////////////|   
 # -------------------------------------------------------------------------
@@ -281,24 +353,6 @@ class Edges(object):
       print("%6d : %4d %4d : %4d %4d" % (i,*self.edges[i]))
 
 # -------------------------------------------------------------------------
-      
-class System(object):
-    
-    def __init__(self,n):
-        self.A      = np.zeros((n,n));
-        self.B      = np.zeros(n);
-        self.n      = n;
-    
-    def printff(self):
-        for i in range(self.n):
-            for j in range(self.n):
-                if (self.A[i,j] == 0) :
-                    print("     ", end='')
-                else :
-                    print(" %+.1f" % self.A[i,j],end='')
-            print(" :  %+.1f" % self.B[i]);
-
-# -------------------------------------------------------------------------
         
 class Tsunami(object):
     
@@ -318,18 +372,22 @@ class Tsunami(object):
         self.iterE  = np.zeros([self.size,3])
         self.rule1D = IntegrationRule("Edge",2);
         self.rule2D = IntegrationRule("Triangle",3);
-
+        self.mapEdgeLeft = np.zeros((self.edges.nEdges,3),dtype=np.int)
+        self.mapEdgeRight = np.zeros((self.edges.nEdges,3),dtype=np.int)
+        for iEdge in range(self.edges.nBoundary,self.edges.nEdges):
+          myEdge = self.edges.edges[iEdge]
+          elementLeft  = myEdge[2]
+          elementRight = myEdge[3]
+          nodesLeft    = self.mesh.elem[elementLeft]
+          nodesRight   = self.mesh.elem[elementRight]
+          self.mapEdgeLeft[iEdge,0]  = elementLeft
+          self.mapEdgeRight[iEdge,0] = elementRight
+          self.mapEdgeLeft[iEdge,1:3]  = [ np.nonzero(nodesLeft  == myEdge[j])[0][0] for j in range(2)]
+          self.mapEdgeRight[iEdge,1:3] = [ np.nonzero(nodesRight == myEdge[j])[0][0] for j in range(2)]         
     
-    
-    def initialize(self):
-        for iElem in range(self.mesh.nElem):
-            mapCoord = self.mesh.elem[iElem]
-            for j in range(3):
-                self.E[3*iElem + j] = self.initialConditionOkada(self.mesh.x[mapCoord[j]],self.mesh.y[mapCoord[j]])
-         
-    
-    def writeFile(self,fileName):
-        nElem = self.E.shape[0]; 
+    def writeFile(self,fileName,iter):
+        fileName = fileName % iter
+        nElem = self.mesh.nElem;
         with open(fileName,"w") as f :
             f.write("Number of elements %d\n" % nElem)
             for i in range(nElem):
