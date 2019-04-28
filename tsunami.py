@@ -232,6 +232,37 @@ def computeEdge(Tsunami):
         iterU[iElemRight][mapEdgeRight] += ((weight * eStar * term) @ phi) * nx * g * jac / 2
         iterV[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * ny * g * jac / 2
         iterV[iElemRight][mapEdgeRight] += ((weight * eStar * term) @ phi) * ny * g * jac / 2
+        
+        
+    for iEdge in range(theEdges.nBoundary):
+        nodes = theEdges.edges[iEdge][0:2]
+        x = X[nodes]
+        y = Y[nodes]
+        z = Z[nodes]
+        
+        mapEdgeLeft  = Tsunami.mapEdgeLeft[iEdge][1:3]
+            
+        iElemLeft = Tsunami.mapEdgeLeft[iEdge][0]
+            
+        dx      = x[1] - x[0]
+        dy      = y[1] - y[0]
+        jac     = np.sqrt(dx*dx+dy*dy)
+        nx      = -dy / jac
+        ny      = dx / jac
+        unLeft  = U[iElemLeft][mapEdgeLeft] * nx + V[iElemLeft][mapEdgeLeft] * ny
+        unRight = -unLeft
+        eLeft   = E[iElemLeft][mapEdgeLeft]
+        eRight  = eLeft
+        
+        eStar   = 0.5 * ((eLeft - eRight)   + np.sqrt(z/g) * (unLeft + unRight))     
+        unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
+        
+        term = (4*R*R+x*x+y*y)/(4*R*R)
+        
+        iterE[iElemLeft][mapEdgeLeft]   -= ((weight * z * unStar * term) @ phi) * jac / 2
+        iterU[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * nx * g * jac / 2
+        iterV[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * ny * g * jac / 2
+            
     return 
 
 def inverseMatrix(Tsunami):
