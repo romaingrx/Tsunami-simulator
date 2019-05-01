@@ -10,13 +10,15 @@
 # 
 
 import numpy as np
-import tsunami as tsunami
+import tsunamiExperimental as tsunami
+#import tsunamiBoucle as tsunami
+#import tsunami as tsunami
 
 #
 # -1- Lecture des données
 #
-
-theMeshFile = "PacificTriangleFine.txt"
+R = 6371220
+theMeshFile = "PacificTriangleTiny.txt"
 [nNode,X,Y,H,nElem,elem] = tsunami.readMesh(theMeshFile)
 print(" == Number of elements : %d " % nElem)
 print(" == Number of nodes    : %d " % nNode)
@@ -28,7 +30,7 @@ print(" == Number of nodes    : %d " % nNode)
 #     Observer qu'on a créé des coordonnées discontinues pour pouvoir
 #     évaluer la condition initiale.
 #
-
+theMesh = tsunami.Mesh(theMeshFile,R)
 x = np.zeros([nElem,3])
 y = np.zeros([nElem,3])
 for iElem in range(nElem):
@@ -48,8 +50,8 @@ tsunami.writeResult(theResultFiles,0,E)
 U = np.zeros([nElem,3])
 V = np.zeros([nElem,3])
 E = tsunami.readResult(theResultFiles,0,nElem)
-dt = 0.1; nIter = 100; nSave = 25
+dt = 5; nIter = 2; nSave = 25
 [U,V,E] = tsunami.compute(theMeshFile,theResultFiles,U,V,E,dt,nIter,nSave)
 
-for iElem in [27,28] :
-  print(" == Elevations for element %d : %14.7e %14.7e %14.7e " % (iElem,*E[iElem][:]) )
+#for iElem in [27,28] :
+#  print(" == Elevations for element %d : %14.7e %14.7e %14.7e " % (iElem,*E[iElem][:]) )
