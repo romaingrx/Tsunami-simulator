@@ -141,54 +141,55 @@ def computeElem(Tsunami):
     dphidxsi = np.array([ -1.0, 1.0,0.0])
     dphideta = np.array([ -1.0, 0.0,1.0])
     for iElem in range(theMesh.nElem):
+        
         mapCoord = theMesh.elem[iElem];
         
         xloc     = X[mapCoord]
         yloc     = Y[mapCoord]
         zloc     = Z[mapCoord]
-#        if(iElem == 0):
-#            print(xloc,yloc)
         
         eloc     = E[iElem,:]
         uloc     = U[iElem,:]
         vloc     = V[iElem,:]
         
-        for k in range(theRule.n):
-            #xsik = xsi[k] 
-            #etak = eta[k]
-            weightk = weight[k]
-            phik = phi[k,:]
-            
-            dxdxsi   = 0
-            dxdeta   = 0
-            dydxsi   = 0
-            dydeta   = 0
-            for i in range(3):
-                dxdxsi += xloc[i]*dphidxsi[i];
-                dxdeta += xloc[i]*dphideta[i];
-                dydxsi += yloc[i]*dphidxsi[i];
-                dydeta += yloc[i]*dphideta[i];
-            jac = abs(dxdxsi*dydeta - dydxsi*dxdeta)
-            dphidx = np.zeros(3); dphidy = np.zeros(3); x=0; y=0; h=0;e=0;u=0;v=0
-            for i in range(3):
-                dphidx[i] = (dphidxsi[i] * dydeta - dphideta[i] * dydxsi) / jac;
-                dphidy[i] = (dphideta[i] * dxdxsi - dphidxsi[i] * dxdeta) / jac;
-                x += xloc[i]*phik[i]
-                y += yloc[i]*phik[i]
-                h += zloc[i]*phik[i]
-                e += eloc[i]*phik[i]
-                u += uloc[i]*phik[i]
-                v += vloc[i]*phik[i]
-            sinlat = ((4*R*R-x*x-y*y))/(4*R*R+x*x+y*y)
-            coriolis = 2*omega*sinlat
-            sphere = ((4*R*R+x*x+y*y)/(4*R*R))
-#            if (iElem == 0):
-#                print(iterE[0:5,:])
-            for i in range(3):
-                iterE[iElem,i] += ((dphidx[i]*h*u+dphidy[i]*h*v)*sphere + (phik[i]*(h*(x*u+y*v)/(R*R))))            * jac*weightk;
-                iterU[iElem,i] += ((phik[i]*(coriolis*v-gamma*u)+dphidx[i]*g*e*sphere) + (phik[i]*g*x*e/(2*R*R)))    * jac*weightk;
-                iterV[iElem,i] += ((phik[i]*(-coriolis*u-gamma*v) + dphidy[i]*g*e*sphere) + (phik[i]*g*y*e/(2*R*R))) * jac*weightk;
-#    print(iterU[0:3,:])
+        dxdxsi   = xloc @ dphidxsi
+        dxdeta   = xloc @ dphideta
+        dydxsi   = yloc @ dphidxsi
+        dydeta   = yloc @ dphideta
+        
+        jac = abs(dxdxsi*dydeta - dydxsi*dxdeta)
+        dphidx = (dphidxsi * dydeta - dphideta * dydxsi) / jac;
+        dphidy = (dphideta * dxdxsi - dphidxsi * dxdeta) / jac;
+        
+        eh = phi @ eloc
+        uh = phi @ uloc
+        vh = phi @ vloc
+        
+        xh = phi @ xloc
+        yh = phi @ yloc
+        zh = phi @ zloc
+        
+        sinLat = (4*R*R - xh*xh - yh*yh) / (4*R*R + xh*xh + yh*yh)
+        term = (4*R*R+xh*xh+yh*yh)/(4*R*R)        
+        f = 2 * omega * sinLat
+
+
+#            for i in range(3):
+#                iterE[iElem,i] += ((dphidx[i]*h*u+dphidy[i]*h*v)*sphere + (phik[i]*(h*(x*u+y*v)/(R*R))))            * jac*weightk;
+#                iterU[iElem,i] += ((phik[i]*(coriolis*v-gamma*u)+dphidx[i]*g*e*sphere) + (phik[i]*g*x*e/(2*R*R)))    * jac*weightk;
+#                iterV[iElem,i] += ((phik[i]*(-coriolis*u-gamma*v) + dphidy[i]*g*e*sphere) + (phik[i]*g*y*e/(2*R*R))) * jac*weightk;
+                        
+        EtermDphidx = sum(zh*uh*jac*weight*term)
+        EtermDphidy = sum(zh*vh*jac*weight*term)
+        EtermPhi = zh * (xh * uh + yh *vh) * jac * weight / (R*R)
+        UtermPhi = (f * vh - gamma * uh + (g * eh * xh / (2*R*R))) * jac * weight
+        UVtermDphi = sum(g * eh * term * jac * weight)
+        VtermPhi = (-f * uh - gamma * vh + (g * eh * yh / (2*R*R))) * jac *weight
+        
+        iterU[iElem,:] += (UtermPhi @ phi) + (dphidx * UVtermDphi)
+        iterV[iElem,:] += (VtermPhi @ phi) + (dphidy * UVtermDphi)
+        iterE[iElem,:] += (EtermPhi @ phi) + (dphidx * EtermDphidx + dphidy * EtermDphidy)
+    
     return
 
         
@@ -221,29 +222,20 @@ def computeEdge(Tsunami):
         x = X[nodes]
         y = Y[nodes]
         z = Z[nodes]
-        
-
-        
+                
         myEdge = theEdges.edges[iEdge]
-        
-        #mapEdgeLeft  = Tsunami.mapEdgeLeft[iEdge][1:3]
-        #mapEdgeRight = Tsunami.mapEdgeRight[iEdge][1:3]
-            
-        #mapEdgeLeft = np.zeros(2,dtype = int); mapEdgeRight = np.zeros(2,dtype = int)
         
         elementLeft  = myEdge[2]
         nodesLeft    = theMesh.elem[elementLeft]
-        #mapEdgeLeft  = [3*elementLeft + np.nonzero(nodesLeft == myEdge[j])[0][0]  for j in range(2)]
+
   
         elementRight = myEdge[3]
         nodesRight   = theMesh.elem[elementRight]
-        #mapEdgeRight = [3*elementRight + np.nonzero(nodesRight == myEdge[j])[0][0] for j in range(2)]
+
         
-        mapEdgeLeft = [np.nonzero(nodesLeft  == myEdge[j])[0][0] for j in range(2)]
-        mapEdgeRight = [np.nonzero(nodesRight == myEdge[j])[0][0] for j in range(2)]
+        mapEdgeLeft = [np.nonzero(nodesLeft  == myEdge[i])[0][0] for i in range(2)]
+        mapEdgeRight = [np.nonzero(nodesRight == myEdge[i])[0][0] for i in range(2)]
             
-        #iElemLeft = Tsunami.mapEdgeLeft[iEdge][0]
-        #iElemRight = Tsunami.mapEdgeRight[iEdge][1]
         
         #if iElemLeft == 100:
         #   print(mapEdgeLeft,mapEdgeRight)
@@ -255,45 +247,78 @@ def computeEdge(Tsunami):
         ny      = -dx / jac
         jac     = 0.5 * jac
         
-        for k in range(theRule.n):
-            #xsik = xsi[k] 
-            #etak = eta[k]
-            weightk = weight[k]
-            phik = phi[k,:]
+        x = phi @ x
+        y = phi @ y
+        z = phi @ z
+        
+        uhLeft  = U[elementLeft][mapEdgeLeft] @ phi
+        vhLeft  = V[elementLeft][mapEdgeLeft] @ phi
+        uhRight = U[elementRight][mapEdgeRight] @ phi
+        vhRight = V[elementRight][mapEdgeRight] @ phi
+        eLeft   = E[elementLeft][mapEdgeLeft] @ phi
+        eRight  = E[elementRight][mapEdgeRight] @ phi
+        
+        unLeft  = uhLeft * nx + vhLeft * ny
+        unRight = uhRight * nx + vhRight * ny    
                 
-            x = phik @ X[nodes]
-            y = phik @ Y[nodes]
-            z = phik @ Z[nodes]
+        eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
+        unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
+        
+        term = (4*R*R+x*x+y*y)/(4*R*R)
+            
+        
+        iterE[elementLeft][mapEdgeLeft]   -= (phi @ (weight * z * unStar * term)) * jac
+        iterE[elementRight][mapEdgeRight] += (phi @ (weight * z * unStar * term)) * jac
+        iterU[elementLeft][mapEdgeLeft]   -= (phi @ (weight * eStar * term)) * nx * g * jac
+        iterU[elementRight][mapEdgeRight] += (phi @ (weight * eStar * term)) * nx * g * jac
+        iterV[elementLeft][mapEdgeLeft]   -= (phi @ (weight * eStar * term)) * ny * g * jac
+        iterV[elementRight][mapEdgeRight] += (phi @ (weight * eStar * term)) * ny * g * jac
+
+#     version non optimisée   
+#        for k in range(theRule.n):
+
+#            weightk = weight[k]
+#            phik = phi[k,:]
+                
+#            x = phik @ X[nodes]
+#            y = phik @ Y[nodes]
+#            z = phik @ Z[nodes]
             
         
                 
 
-            uhLeft  = U[elementLeft][mapEdgeLeft] @ phik
-            vhLeft  = V[elementLeft][mapEdgeLeft] @ phik
-            uhRight = U[elementRight][mapEdgeRight] @ phik
-            vhRight = V[elementRight][mapEdgeRight] @ phik
-            eLeft   = E[elementLeft][mapEdgeLeft] @ phik
-            eRight  = E[elementRight][mapEdgeRight] @ phik
+#            uhLeft  = U[elementLeft][mapEdgeLeft] @ phik
+#            vhLeft  = V[elementLeft][mapEdgeLeft] @ phik
+#            uhRight = U[elementRight][mapEdgeRight] @ phik
+#            vhRight = V[elementRight][mapEdgeRight] @ phik
+#            eLeft   = E[elementLeft][mapEdgeLeft] @ phik
+#            eRight  = E[elementRight][mapEdgeRight] @ phik
                 
         
-            unLeft  = uhLeft * nx + vhLeft * ny
-            unRight = uhRight * nx + vhRight * ny    
+#            unLeft  = uhLeft * nx + vhLeft * ny
+#            unRight = uhRight * nx + vhRight * ny    
                 
-            eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
-            unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
+#            eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
+#            unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
         
-            term = (4*R*R+x*x+y*y)/(4*R*R)
-
-            #print(uhLeft)
-            for i in range(2):
-                #term = (4*R*R+x[i]*x[i]+y[i]*y[i])/(4*R*R)
-                    
-                iterE[elementLeft][mapEdgeLeft[i]]   -= phik[i] * weightk * z * unStar * term * jac
-                iterE[elementRight][mapEdgeRight[i]] += phik[i] * weightk * z * unStar * term * jac
-                iterU[elementLeft][mapEdgeLeft[i]]   -= phik[i] * (weightk * eStar * term) * nx * g * jac
-                iterU[elementRight][mapEdgeRight[i]] += phik[i] * (weightk * eStar * term) * nx * g * jac
-                iterV[elementLeft][mapEdgeLeft[i]]   -= phik[i] * (weightk * eStar * term) * ny * g * jac
-                iterV[elementRight][mapEdgeRight[i]] += phik[i] * (weightk * eStar * term) * ny * g * jac
+#            term = (4*R*R+x*x+y*y)/(4*R*R)
+            
+#        version vectorisée avec valeur identique à la boucle mais résultat étrangement plus lent
+#            iterE[elementLeft][mapEdgeLeft]   -= (phik * (weight * z * unStar * term)) * jac
+#            iterE[elementRight][mapEdgeRight] += (phik * (weight * z * unStar * term)) * jac
+#            iterU[elementLeft][mapEdgeLeft]   -= (phik * (weight * eStar * term)) * nx * g * jac
+#            iterU[elementRight][mapEdgeRight] += (phik * (weight * eStar * term)) * nx * g * jac
+#            iterV[elementLeft][mapEdgeLeft]   -= (phik * (weight * eStar * term)) * ny * g * jac
+#            iterV[elementRight][mapEdgeRight] += (phik * (weight * eStar * term)) * ny * g * jac
+            
+#            for i in range(2):
+                  
+#                iterE[elementLeft][mapEdgeLeft[i]]   -= phik[i] * weightk * z * unStar * term * jac
+#                iterE[elementRight][mapEdgeRight[i]] += phik[i] * weightk * z * unStar * term * jac
+#                iterU[elementLeft][mapEdgeLeft[i]]   -= phik[i] * (weightk * eStar * term) * nx * g * jac
+#                iterU[elementRight][mapEdgeRight[i]] += phik[i] * (weightk * eStar * term) * nx * g * jac
+#                iterV[elementLeft][mapEdgeLeft[i]]   -= phik[i] * (weightk * eStar * term) * ny * g * jac
+#                iterV[elementRight][mapEdgeRight[i]] += phik[i] * (weightk * eStar * term) * ny * g * jac
         
         
     for iEdge in range(theEdges.nBoundary):
@@ -312,16 +337,10 @@ def computeEdge(Tsunami):
         
         elementLeft  = myEdge[2]
         nodesLeft    = theMesh.elem[elementLeft]
-        #mapEdgeLeft  = [3*elementLeft + np.nonzero(nodesLeft == myEdge[j])[0][0]  for j in range(2)]
   
-
         
         mapEdgeLeft = [np.nonzero(nodesLeft  == myEdge[j])[0][0] for j in range(2)]
-
         
-        #mapEdgeLeft  = Tsunami.mapEdgeLeft[iEdge][1:3]
-            
-        #iElemLeft = Tsunami.mapEdgeLeft[iEdge][0]
         
         dx      = x[1] - x[0]
         dy      = y[1] - y[0]
@@ -331,42 +350,56 @@ def computeEdge(Tsunami):
         jac     = 0.5 * jac
         
 
+        x = phi @ x
+        y = phi @ y
+        z = phi @ z
         
-            
-        for k in range(2):
-            #xsik = xsi[k] 
-            #etak = eta[k]
-            weightk = weight[k]
-            phik = phi[k,:]
-            
-            #x = x @ phik
-            #y = y @ phik
-            x = phik @ X[nodes]
-            y = phik @ Y[nodes]
-            z = phik @ Z[nodes]
+        uhLeft  = U[elementLeft][mapEdgeLeft] @ phi
+        vhLeft  = V[elementLeft][mapEdgeLeft] @ phi
+        eLeft   = E[elementLeft][mapEdgeLeft] @ phi
         
-                
+        unLeft  = uhLeft * nx + vhLeft * ny
+        unRight = -unLeft
+        eRight  = eLeft
+        
+        eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
+        unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
+        
+        term = (4*R*R+x*x+y*y)/(4*R*R)
+        
+        iterE[elementLeft][mapEdgeLeft]   -= (phi @ (weight * z * unStar * term)) * jac
+        iterU[elementLeft][mapEdgeLeft]   -= (phi @ (weight * eStar * term)) * nx * g * jac
+        iterV[elementLeft][mapEdgeLeft]   -= (phi @ (weight * eStar * term)) * ny * g * jac
             
-            uhLeft  = U[elementLeft][mapEdgeLeft] @ phik
-            vhLeft  = V[elementLeft][mapEdgeLeft] @ phik
-            eLeft   = E[elementLeft][mapEdgeLeft] @ phik
+#        for k in range(2):
+#
+#            weightk = weight[k]
+#            phik = phi[k,:]
+#            
+#            x = phik @ X[nodes]
+#            y = phik @ Y[nodes]
+#            z = phik @ Z[nodes]
+        
+                            
+#            uhLeft  = U[elementLeft][mapEdgeLeft] @ phik
+#            vhLeft  = V[elementLeft][mapEdgeLeft] @ phik
+#            eLeft   = E[elementLeft][mapEdgeLeft] @ phik
 
-
+       
+#            unLeft  = uhLeft * nx + vhLeft * ny
+#            unRight = -unLeft
+#            eRight  = eLeft
         
-            unLeft  = uhLeft * nx + vhLeft * ny
-            unRight = -unLeft
-            eRight  = eLeft
+#            eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
+#            unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
         
-            eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
-            unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
-        
-            term = (4*R*R+x*x+y*y)/(4*R*R)
+#            term = (4*R*R+x*x+y*y)/(4*R*R)
      
-            for i in range(2):
+#            for i in range(2):
                 
-                iterE[elementLeft][mapEdgeLeft[i]]   -= (phik[i] * (weightk * z * unStar * term)) * jac 
-                iterU[elementLeft][mapEdgeLeft[i]]   -= (phik[i] * (weightk * eStar * term * nx)) * g * jac 
-                iterV[elementLeft][mapEdgeLeft[i]]   -= (phik[i] * (weightk * eStar * term * ny)) * g * jac 
+#                iterE[elementLeft][mapEdgeLeft[i]]   -= (phik[i] * (weightk * z * unStar * term)) * jac 
+#                iterU[elementLeft][mapEdgeLeft[i]]   -= (phik[i] * (weightk * eStar * term * nx)) * g * jac 
+#                iterV[elementLeft][mapEdgeLeft[i]]   -= (phik[i] * (weightk * eStar * term * ny)) * g * jac 
             
     return  
 
