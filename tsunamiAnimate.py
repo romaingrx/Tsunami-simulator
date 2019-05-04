@@ -18,11 +18,12 @@ from OpenGL.GLUT import *
 import numpy as np
 import tsunami
 import sys
+import time
 
 # -------------------------------------------------------------------------
 
 def draw():  
-  global E,theFlagBathymetry,theMouse,theRatio
+  global E,theFlagBathymetry,translationHorizontal,translationVertical,zoom,theRatio, degreesHorizontal, degreesVertical, view
 
   glClearColor( 0.9, 0.9, 0.8, 0.0 );
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -33,8 +34,24 @@ def draw():
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
   gluLookAt(0.0,1.0,0.0,0.0,20.0,0.0,0.0,0.0,1.0);  
-  glTranslatef(0.0,14.0,0.0);
-  glRotatef(0.3*theMouse,0.0,0.0,1.0);
+  glTranslatef(0.2*translationHorizontal,3.0,0.2*translationVertical);
+  glTranslatef(0.0,0.25*zoom,0.0);
+#  glRotatef(degreesVertical,np.cos(degreesHorizontal * np.pi / 180),np.sin(degreesHorizontal * np.pi / 180),0.0);
+  if(view == 0):
+      glTranslatef(0.0,14.0,0.0);
+      glRotatef(degreesHorizontal,0.0,0.0,-1.0);      
+#      glRotatef(degreesVertical,np.cos(degreesHorizontal * np.pi / 180),np.sin(degreesHorizontal * np.pi / 180),0.0);
+  if(view == 1):
+      glTranslatef(0.0,7.0,-4.0);
+      glRotatef(116,0.0,0.0,1.0);
+  if(view == 2):
+      glTranslatef(0.0,9.0,-3.0);
+      glRotatef(116,0.0,0.0,1.0);
+#  glRotatef(degreesVertical, 0, 1, 0)
+#  print(degreesVertical)
+#  glRotatef(degreesVertical, np.cos(degreesHorizontal * np.pi / 180),0,np.sin(degreesHorizontal * np.pi / 180) )
+#  glRotatef(0.7*translationHorizontal,0.0,0.0,1.0);
+#  glRotatef(0.7*translationVertical,1.0,1.0,0.0);
   
   quadratic = gluNewQuadric();         
   gluQuadricNormals(quadratic, GLU_SMOOTH); 
@@ -74,6 +91,8 @@ def draw():
   glDisableClientState(GL_COLOR_ARRAY);
   glDisableClientState(GL_VERTEX_ARRAY);      
     
+#  string = "COUCOU"
+#  glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, string[0]);
   coord *= 1.001;
 
   glColor3f(0.0, 0.0, 0.0);
@@ -96,15 +115,37 @@ def reshape(width, height):
 # -------------------------------------------------------------------------
  
 def keyboard(key,x,y):
-  global theFlagBathymetry
+  global theFlagBathymetry, zoom, degreesHorizontal, degreesVertical, view, tab, run, paused, sleeper
   
   key = key.decode()
   if ord(key) == 27: # Escape
     sys.exit(0)
+  elif key == 'v':
+    view = tab[view - 1]
+  elif key == 'd':
+    degreesHorizontal += 4.0
   elif key == 'b':
-    theFlagBathymetry = True
+    theFlagBathymetry = not(theFlagBathymetry)
+  elif key == 'q':
+    degreesHorizontal -= 4.0
+  elif key == 'z':
+    degreesVertical += 4.0
+  elif key == 's':
+    degreesVertical -= 4.0
   elif key == 'e':
-    theFlagBathymetry = False  
+    zoom -= 3 
+  elif key == 'a':
+    zoom += 3     
+  elif key == 'r':
+    run() 
+  elif key == 'p':
+    sleeper += 10**(-4)
+  elif key == 'm':
+    sleeper -= 10**(-4)
+    if(sleeper < 0):
+        sleeper = 0
+  elif ord(key) == 32:
+    paused = not(paused) 
   else:
     return
   glutPostRedisplay()
@@ -112,92 +153,131 @@ def keyboard(key,x,y):
 # -------------------------------------------------------------------------
 
 def special(symbol,x,y):
-  global theMouse
-  
-  if symbol == GLUT_KEY_UP :        
-    theMouse -= 5
+  global translationHorizontal, translationVertical
+  if symbol == GLUT_KEY_LEFT : 
+    translationHorizontal += 3
+  elif symbol == GLUT_KEY_RIGHT : 
+    translationHorizontal -= 3
+  elif symbol == GLUT_KEY_UP :        
+    translationVertical -= 3
   elif symbol == GLUT_KEY_DOWN :
-    theMouse += 5
+    translationVertical += 3
   else:
     return
   glutPostRedisplay()
   
 # -------------------------------------------------------------------------
 
+def printf(x, y, Text):
+    font = GLUT_BITMAP_9_BY_15
+    blending = False 
+    if glIsEnabled(GL_BLEND) :
+        blending = True
+
+    #glEnable(GL_BLEND)
+    glColor3f(1,1,1)
+    glRasterPos2f(x,y)
+    for ch in Text :
+        glutBitmapCharacter( font , ctypes.c_int( ord(ch) ) )
+
+
+    if not blending :
+        glDisable(GL_BLEND) 
+
+# -------------------------------------------------------------------------
 def idle():
-  global iter,delta,E,theResultFiles
+  global iter,delta,E,theResultFiles, paused, sleeper
   
-  iter += delta 
   try :
-    E = tsunami.readResult(theResultFiles,iter,nElem)
-    glutPostRedisplay()
+    if (paused == False):
+        time.sleep(sleeper)
+        iter += delta   
+        E = tsunami.readResult(theResultFiles,iter,nElem)
+        glutPostRedisplay()
   except FileNotFoundError: 
     pass
 
 # -------------------------------------------------------------------------
   
-iter = 0; delta = 25;
+iter = 0; delta = 2;
 R = 6371220;
 BathMax = 9368;
 theMeshFile = "PacificTriangleFine.txt"
 theResultFiles = "results/eta-%06d.txt"
 theFlagBathymetry = False
-theMouse = 389
-theRatio = 1.0
-
-glutInit(sys.argv)
-glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH)
-glutInitWindowPosition(0, 0)
-glutInitWindowSize(500, 500)
-glutCreateWindow("MECA1120 : the 2019 project :-)")
-
-matSpecular   = [1.0,1.0,1.0,0.0]
-matShininess  = [50.0]
-lightPosition = [8.0,8.0,8.0,0.0]
-lightRadiance = [1.0,1.0,1.0,1.0]
-glMaterialfv(GL_FRONT,GL_SPECULAR, matSpecular)
-glMaterialfv(GL_FRONT,GL_SHININESS,matShininess)
-glLightModeli(GL_LIGHT_MODEL_TWO_SIDE,GL_TRUE)
-glLightfv(GL_LIGHT0,GL_POSITION,lightPosition)
-glLightfv(GL_LIGHT0,GL_DIFFUSE, lightRadiance)
-glLightfv(GL_LIGHT0,GL_SPECULAR,lightRadiance)
-glEnable(GL_LIGHTING)
-glEnable(GL_LIGHT0)
-glDepthFunc(GL_LEQUAL)
-glEnable(GL_DEPTH_TEST)
-glEnable(GL_COLOR_MATERIAL)
-glEnable(GL_NORMALIZE)	
-
-glutDisplayFunc(draw)
-glutKeyboardFunc(keyboard)
-glutSpecialFunc(special)
-glutReshapeFunc(reshape)
-glutIdleFunc(idle)
-
-glClearColor( 0.9, 0.9, 0.8, 0.0 );
-glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-glMatrixMode(GL_PROJECTION);
-glLoadIdentity();
-gluPerspective(65.0,1.0,1.0,100.0);
-
-if "-info" in sys.argv:
-  print("GL_RENDERER   = ",glGetString(GL_RENDERER).decode())
-  print("GL_VERSION    = ",glGetString(GL_VERSION).decode())
-  print("GL_VENDOR     = ",glGetString(GL_VENDOR).decode())
-
-print('======================================')  
-print(' b       : show bathymetry ')
-print(' e       : show elevation (by default) ')
-print(' UP/DOWN : rotate the Earth ')
-print(' ESC     : exit ')
-print('======================================')
- 
+paused = False
+translationHorizontal = 0
+translationVertical = 0
+zoom = 0.0
+degreesHorizontal = -116.0
+degreesVertical = 0.0
+theRatio = 0.8
+view = 0
+sleeper = 0
+tab = [0, 1, 2]
 [nNode,X,Y,H,nElem,elem] = tsunami.readMesh(theMeshFile)
-try :
-  E = tsunami.readResult(theResultFiles,0,nElem)
-except FileNotFoundError:
-  E = np.zeros([nElem,3])
-
-glutMainLoop()
-
+E = np.zeros([nElem,3])
 # -------------------------------------------------------------------------
+
+def run():
+    global iter, E, delta, R, BathMax, theMeshFile, theResultFiles, theFlagBathymetry, translationHorizontal, translationVertical, zoom , degreesHorizontal, degreesVertical, theRatio, nNode,X,Y,H,nElem,elem
+    iter = 0; delta = 2;
+    glutInit(sys.argv)
+    glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH)
+    # Full screen
+    glutInitWindowSize(glutGet(GLUT_SCREEN_WIDTH), glutGet(GLUT_SCREEN_HEIGHT))
+    glutCreateWindow("1")
+    
+
+    matSpecular   = [1.0,1.0,1.0,0.0]
+    matShininess  = [50.0]
+    lightPosition = [8.0,8.0,8.0,0.0]
+    lightRadiance = [1.0,1.0,1.0,1.0]
+    glMaterialfv(GL_FRONT,GL_SPECULAR, matSpecular)
+    glMaterialfv(GL_FRONT,GL_SHININESS,matShininess)
+    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE,GL_TRUE)
+    glLightfv(GL_LIGHT0,GL_POSITION,lightPosition)
+    glLightfv(GL_LIGHT0,GL_DIFFUSE, lightRadiance)
+    glLightfv(GL_LIGHT0,GL_SPECULAR,lightRadiance)
+    glEnable(GL_LIGHTING)
+    glEnable(GL_LIGHT0)
+    glDepthFunc(GL_LEQUAL)
+    glEnable(GL_DEPTH_TEST)
+    glEnable(GL_COLOR_MATERIAL)
+    glEnable(GL_NORMALIZE)	
+    
+    glutDisplayFunc(draw)
+    glutKeyboardFunc(keyboard)
+    glutSpecialFunc(special)
+    glutReshapeFunc(reshape)
+    glutIdleFunc(idle)
+    glClearColor( 0.9, 0.9, 0.8, 0.0 );
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(65.0,1.0,1.0,100.0);
+    
+    if "-info" in sys.argv:
+      print("GL_RENDERER   = ",glGetString(GL_RENDERER).decode())
+      print("GL_VERSION    = ",glGetString(GL_VERSION).decode())
+      print("GL_VENDOR     = ",glGetString(GL_VENDOR).decode())
+    
+    print('======================================')  
+    print(' b       : show bathymetry/elevation ')
+    print(' a | e   : zoom ')
+    print(' r       : restart ')
+    print(' p | m   : speed of the elevation ')
+    print(' q | d   : rotate the Earth ')
+    print(' UP/DOWN/LEFT/RIGHT : translate the Earth ')
+    print(' SPACE   : pause ')
+    print(' ESC     : exit ')
+    print('======================================')
+     
+    try :
+      E = tsunami.readResult(theResultFiles,0,nElem)
+    except FileNotFoundError:
+      E = np.zeros([nElem,3])
+    
+    glutMainLoop()
+    
+run()
