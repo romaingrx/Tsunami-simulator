@@ -127,9 +127,9 @@ def computeElem(Tsunami):
     iterU   = Tsunami.iterU;
     iterV   = Tsunami.iterV;
     iterE   = Tsunami.iterE;
-    X       = theMesh.xStar;
-    Y       = theMesh.yStar;
-    Z       = theMesh.zStar;
+    X       = theMesh.x;
+    Y       = theMesh.y;
+    Z       = theMesh.z;
     R       = Tsunami.R; 
     omega   = Tsunami.omega;
     gamma   = Tsunami.gamma
@@ -207,9 +207,9 @@ def computeEdge(Tsunami):
     iterU   = Tsunami.iterU;
     iterV   = Tsunami.iterV;
     iterE   = Tsunami.iterE;
-    X       = theMesh.xStar;
-    Y       = theMesh.yStar;
-    Z       = theMesh.zStar;
+    X       = theMesh.x;
+    Y       = theMesh.y;
+    Z       = theMesh.z;
     R       = Tsunami.R; 
     g       = Tsunami.g
     xsi    = theRule.xsi;
@@ -451,21 +451,30 @@ class IntegrationRule(object):
 class Mesh(object):
     
     def __init__(self,fileName,R):
+        dphidxsi = np.array([ -1.0, 1.0,0.0])
+        dphideta = np.array([ -1.0, 0.0,1.0])
+        xsi = _gaussTri3Xsi
+        eta = _gaussTri3Eta
+        phi = np.array([1-xsi-eta,xsi,eta])
         with open(fileName,"r") as f :
             self.nNode = int(f.readline().split()[3])
             self.xyz   = np.array(list(list(float(w) for w in f.readline().split()[2:]) for i in range(self.nNode)))
-            self.xyz[:,2] = self.xyz[:,2].clip(100)
+#            self.xyz[:,2] = self.xyz[:,2].clip(100)
             self.nElem = int(f.readline().split()[3])
             self.elem  = np.array(list(list(int(w)   for w in f.readline().split()[2:]) for i in range(self.nElem)))
-            self.xStar = self.xyz[:,0]
-            self.yStar = self.xyz[:,1]
-            self.zStar = self.xyz[:,2] 
-#            self.xy    = np.array(list(list(np.array([2*R*self.xStar[i] / (R + self.zStar[i]),2*R*self.yStar[i] / (R + self.zStar[i])]) for i in range(self.nNode))))
-#            self.x     = self.xy[:,0]
-#            self.y     = self.xy[:,1] 
-            self.lola  = np.array(list(list(np.array([np.arctan2(self.yStar[i],self.xStar[i])*180/np.pi,np.arcsin(self.zStar[i]/R)*180/np.pi]) for i in range(self.nNode))))
-            self.longitude = self.lola[:,0]
-            self.latitude = self.lola[:,1]            
+            self.x = self.xyz[:,0]
+            self.y = self.xyz[:,1]
+            self.z = self.xyz[:,2]
+            self.dxdxsi   = self.x[self.elem] @ dphidxsi
+            self.dxdeta   = self.x[self.elem] @ dphideta
+            self.dydxsi   = self.y[self.elem] @ dphidxsi
+            self.dydeta   = self.y[self.elem] @ dphideta 
+            self.xStaryStar    = np.array([(4*R*R*self.x) / (4*R*R + self.x*self.x + self.y*self.y),(4*R*R*self.y) / (4*R*R + self.x*self.x + self.y*self.y)])
+            self.xStar     = self.xStaryStar[0,:]
+            self.yStar     = self.xStaryStar[1,:] 
+#            self.lola  = np.array(list(list(np.array([np.arctan2(self.yStar[i],self.xStar[i])*180/np.pi,np.arcsin(self.zStar[i]/R)*180/np.pi]) for i in range(self.nNode))))
+#            self.longitude = self.lola[:,0]
+#            self.latitude = self.lola[:,1]           
             
     def printf(self):
         print("Number of nodes %d" % self.nNode)
