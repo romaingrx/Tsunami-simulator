@@ -10,15 +10,17 @@
 # 
 
 import numpy as np
-import tsunamiExperimental as tsunami
-#import tsunamiBoucle as tsunami
+#import tsunamiExperimental as tsunami
+import tsunamiBoucle as tsunami
 #import tsunami as tsunami
-
+#import tsunamiv2 as tsunami
+#import SauvegardeV0 as tsunami
+#
 #
 # -1- Lecture des données
 #
 R = 6371220
-theMeshFile = "PacificTriangleTiny.txt"
+theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/Tiny.txt"
 [nNode,X,Y,H,nElem,elem] = tsunami.readMesh(theMeshFile)
 print(" == Number of elements : %d " % nElem)
 print(" == Number of nodes    : %d " % nNode)
@@ -30,7 +32,7 @@ print(" == Number of nodes    : %d " % nNode)
 #     Observer qu'on a créé des coordonnées discontinues pour pouvoir
 #     évaluer la condition initiale.
 #
-theMesh = tsunami.Mesh(theMeshFile,R)
+#theMesh = tsunami.Mesh(theMeshFile,R)
 x = np.zeros([nElem,3])
 y = np.zeros([nElem,3])
 for iElem in range(nElem):
@@ -39,7 +41,7 @@ for iElem in range(nElem):
   y[iElem][:] = Y[nodes] 
 E = tsunami.initialConditionOkada(x,y)
 
-theResultFiles = "eta-%06d.txt"
+theResultFiles = "test-%06d.txt"
 tsunami.writeResult(theResultFiles,0,E)
 
 #
@@ -50,7 +52,7 @@ tsunami.writeResult(theResultFiles,0,E)
 U = np.zeros([nElem,3])
 V = np.zeros([nElem,3])
 E = tsunami.readResult(theResultFiles,0,nElem)
-dt = 5; nIter = 2; nSave = 25
+dt = 5; nIter = 20; nSave = 120
 [U,V,E] = tsunami.compute(theMeshFile,theResultFiles,U,V,E,dt,nIter,nSave)
 
 #for iElem in [27,28] :

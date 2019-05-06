@@ -199,11 +199,11 @@ def idle():
 
 # -------------------------------------------------------------------------
   
-iter = 0; delta = 2;
+iter = 0; delta = 500;
 R = 6371220;
 BathMax = 9368;
 theMeshFile = "PacificTriangleFine.txt"
-theResultFiles = "results/eta-%06d.txt"
+theResultFiles = "test-results/compute-%06d.txt"
 theFlagBathymetry = False
 paused = False
 translationHorizontal = 0
