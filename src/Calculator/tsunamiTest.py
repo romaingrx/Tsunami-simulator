@@ -20,7 +20,8 @@ import tsunamiBoucle as tsunami
 # -1- Lecture des données
 #
 R = 6371220
-theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/Tiny.txt"
+#theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/Tiny.txt"
+theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/PacificTriangleFine.txt"
 [nNode,X,Y,H,nElem,elem] = tsunami.readMesh(theMeshFile)
 print(" == Number of elements : %d " % nElem)
 print(" == Number of nodes    : %d " % nNode)
@@ -52,7 +53,7 @@ tsunami.writeResult(theResultFiles,0,E)
 U = np.zeros([nElem,3])
 V = np.zeros([nElem,3])
 E = tsunami.readResult(theResultFiles,0,nElem)
-dt = 5; nIter = 20; nSave = 120
+dt = 5; nIter = 2; nSave = 1000
 [U,V,E] = tsunami.compute(theMeshFile,theResultFiles,U,V,E,dt,nIter,nSave)
 
 #for iElem in [27,28] :

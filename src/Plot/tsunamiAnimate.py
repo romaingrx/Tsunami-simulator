@@ -15,9 +15,12 @@ from OpenGL.GL   import *
 from OpenGL.GLU  import *
 from OpenGL.GLUT import *
 
-import numpy as np
-import tsunami
 import sys
+sys.path.insert(0, '/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/src/Calculator/')
+
+import tsunami as tsunami
+
+import numpy as np
 import time
 
 # -------------------------------------------------------------------------
@@ -202,8 +205,8 @@ def idle():
 iter = 0; delta = 500;
 R = 6371220;
 BathMax = 9368;
-theMeshFile = "PacificTriangleFine.txt"
-theResultFiles = "test-results/compute-%06d.txt"
+theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/PacificTriangleFine.txt"
+theResultFiles = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/perso-resultsnf/compute-%06d.txt"
 theFlagBathymetry = False
 paused = False
 translationHorizontal = 0
@@ -226,8 +229,7 @@ def run():
     glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH)
     # Full screen
     glutInitWindowSize(glutGet(GLUT_SCREEN_WIDTH), glutGet(GLUT_SCREEN_HEIGHT))
-    glutCreateWindow("1")
-    
+    glutCreateWindow("1")    
 
     matSpecular   = [1.0,1.0,1.0,0.0]
     matShininess  = [50.0]
