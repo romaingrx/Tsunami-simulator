@@ -18,7 +18,7 @@ from OpenGL.GLUT import *
 import sys
 sys.path.insert(0, '/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/src/Calculator/')
 
-import tsunami as tsunami
+import tsunamiBoucle as tsunami
 
 import numpy as np
 import time
@@ -70,8 +70,10 @@ def draw():
     value = 10* np.ravel(E)
   else :
     value = H[index]/BathMax
-    
-  value = np.clip(value,0,1)        
+     
+#  print(np.clip(value,0,1))
+#  value = np.asarray(value)
+  value = np.clip(value,a_min = 0.0,a_max = 1.0)        
   colors[0:n:3] = 3.5*(value)*(value)
   colors[1:n:3] = (1-value)*(value)*3.5
   colors[2:n:3] = (1-value)*(1-value)
@@ -140,7 +142,7 @@ def keyboard(key,x,y):
   elif key == 'a':
     zoom += 3     
   elif key == 'r':
-    run() 
+    run(1) 
   elif key == 'p':
     sleeper += 10**(-4)
   elif key == 'm':
@@ -206,7 +208,7 @@ iter = 0; delta = 500;
 R = 6371220;
 BathMax = 9368;
 theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/PacificTriangleFine.txt"
-theResultFiles = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/perso-resultsnf/compute-%06d.txt"
+theResultFiles = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/perso-results/compute-%06d.txt"
 theFlagBathymetry = False
 paused = False
 translationHorizontal = 0
@@ -220,60 +222,59 @@ sleeper = 0
 tab = [0, 1, 2]
 [nNode,X,Y,H,nElem,elem] = tsunami.readMesh(theMeshFile)
 E = np.zeros([nElem,3])
+glutInit(sys.argv)
+glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH)
+# Full screen
+glutInitWindowSize(glutGet(GLUT_SCREEN_WIDTH), glutGet(GLUT_SCREEN_HEIGHT))
+glutCreateWindow("1")
+matSpecular   = [1.0,1.0,1.0,0.0]
+matShininess  = [50.0]
+lightPosition = [8.0,8.0,8.0,0.0]
+lightRadiance = [1.0,1.0,1.0,1.0]
+glMaterialfv(GL_FRONT,GL_SPECULAR, matSpecular)
+glMaterialfv(GL_FRONT,GL_SHININESS,matShininess)
+glLightModeli(GL_LIGHT_MODEL_TWO_SIDE,GL_TRUE)
+glLightfv(GL_LIGHT0,GL_POSITION,lightPosition)
+glLightfv(GL_LIGHT0,GL_DIFFUSE, lightRadiance)
+glLightfv(GL_LIGHT0,GL_SPECULAR,lightRadiance)
+glEnable(GL_LIGHTING)
+glEnable(GL_LIGHT0)
+glDepthFunc(GL_LEQUAL)
+glEnable(GL_DEPTH_TEST)
+glEnable(GL_COLOR_MATERIAL)
+glEnable(GL_NORMALIZE)	
+
+glutDisplayFunc(draw)
+glutKeyboardFunc(keyboard)
+glutSpecialFunc(special)
+glutReshapeFunc(reshape)
+glutIdleFunc(idle)
+glClearColor( 0.9, 0.9, 0.8, 0.0 );
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+glMatrixMode(GL_PROJECTION);
+glLoadIdentity();
+gluPerspective(65.0,1.0,1.0,100.0);
+if "-info" in sys.argv:
+  print("GL_RENDERER   = ",glGetString(GL_RENDERER).decode())
+  print("GL_VERSION    = ",glGetString(GL_VERSION).decode())
+  print("GL_VENDOR     = ",glGetString(GL_VENDOR).decode())
+
+print('======================================')  
+print(' b       : show bathymetry/elevation ')
+print(' a | e   : zoom ')
+print(' r       : restart ')
+print(' p | m   : speed of the elevation ')
+print(' q | d   : rotate the Earth ')
+print(' UP/DOWN/LEFT/RIGHT : translate the Earth ')
+print(' SPACE   : pause ')
+print(' ESC     : exit ')
+print('======================================')
 # -------------------------------------------------------------------------
 
-def run():
+def run(boole):
     global iter, E, delta, R, BathMax, theMeshFile, theResultFiles, theFlagBathymetry, translationHorizontal, translationVertical, zoom , degreesHorizontal, degreesVertical, theRatio, nNode,X,Y,H,nElem,elem
     iter = 0; delta = 2;
-    glutInit(sys.argv)
-    glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE | GLUT_DEPTH)
-    # Full screen
-    glutInitWindowSize(glutGet(GLUT_SCREEN_WIDTH), glutGet(GLUT_SCREEN_HEIGHT))
-    glutCreateWindow("1")    
-
-    matSpecular   = [1.0,1.0,1.0,0.0]
-    matShininess  = [50.0]
-    lightPosition = [8.0,8.0,8.0,0.0]
-    lightRadiance = [1.0,1.0,1.0,1.0]
-    glMaterialfv(GL_FRONT,GL_SPECULAR, matSpecular)
-    glMaterialfv(GL_FRONT,GL_SHININESS,matShininess)
-    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE,GL_TRUE)
-    glLightfv(GL_LIGHT0,GL_POSITION,lightPosition)
-    glLightfv(GL_LIGHT0,GL_DIFFUSE, lightRadiance)
-    glLightfv(GL_LIGHT0,GL_SPECULAR,lightRadiance)
-    glEnable(GL_LIGHTING)
-    glEnable(GL_LIGHT0)
-    glDepthFunc(GL_LEQUAL)
-    glEnable(GL_DEPTH_TEST)
-    glEnable(GL_COLOR_MATERIAL)
-    glEnable(GL_NORMALIZE)	
     
-    glutDisplayFunc(draw)
-    glutKeyboardFunc(keyboard)
-    glutSpecialFunc(special)
-    glutReshapeFunc(reshape)
-    glutIdleFunc(idle)
-    glClearColor( 0.9, 0.9, 0.8, 0.0 );
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(65.0,1.0,1.0,100.0);
-    
-    if "-info" in sys.argv:
-      print("GL_RENDERER   = ",glGetString(GL_RENDERER).decode())
-      print("GL_VERSION    = ",glGetString(GL_VERSION).decode())
-      print("GL_VENDOR     = ",glGetString(GL_VENDOR).decode())
-    
-    print('======================================')  
-    print(' b       : show bathymetry/elevation ')
-    print(' a | e   : zoom ')
-    print(' r       : restart ')
-    print(' p | m   : speed of the elevation ')
-    print(' q | d   : rotate the Earth ')
-    print(' UP/DOWN/LEFT/RIGHT : translate the Earth ')
-    print(' SPACE   : pause ')
-    print(' ESC     : exit ')
-    print('======================================')
      
     try :
       E = tsunami.readResult(theResultFiles,0,nElem)
@@ -282,4 +283,4 @@ def run():
     
     glutMainLoop()
     
-run()
+run(0)
