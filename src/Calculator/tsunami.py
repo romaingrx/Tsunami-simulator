@@ -9,6 +9,10 @@
 # 
 
 import numpy as np
+
+#import sys
+#sys.path.insert(0, '/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/src/Calculator/opt_einsum/optimize')
+from opt_einsum import contract
 #from threading import Thread, Lock
 
 _gaussTri3Xsi    = np.array([0.166666666666667,0.666666666666667,0.166666666666667])
@@ -93,7 +97,7 @@ def initialConditionOkada(x,y) :
 def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     theTsunami = Tsunami(theFile,U,V,E);
     for n in range(nIter):
-        print(n)
+#        print(n)
         iterCompute(theTsunami,dt);
         if ((n % nSave) == 0):
             theTsunami.writeFile(theResultFiles, n)
@@ -122,10 +126,10 @@ def iterCompute(Tsunami,dt):
     computeElem(Tsunami);
     computeEdge(Tsunami);
     inverseMatrix(Tsunami);
-    Tsunami.E += dt * Tsunami.iterE 
-    print(Tsunami.E[27])
-    Tsunami.U += dt * Tsunami.iterU
-    Tsunami.V += dt * Tsunami.iterV
+    Tsunami.E += np.einsum(',ab->ab', dt, Tsunami.iterE)
+#    print(Tsunami.E[27])
+    Tsunami.U += np.einsum(',ab->ab', dt, Tsunami.iterU)
+    Tsunami.V += np.einsum(',ab->ab', dt, Tsunami.iterV)
     return 
 
 # -------------------------------------------------------------------------
@@ -134,9 +138,6 @@ def computeElem(Tsunami):
     theMesh = Tsunami.mesh;
     theRule = Tsunami.rule2D;
     
-    U      = Tsunami.U;
-    V      = Tsunami.V;
-    E      = Tsunami.E;
     R      = Tsunami.R; 
     gamma  = Tsunami.gamma
     g      = Tsunami.g
@@ -145,9 +146,9 @@ def computeElem(Tsunami):
     weight = theRule.weight;
     phi    = np.array([1-xsi-eta,xsi,eta])
     
-    Eh = E @ phi
-    Uh = U @ phi
-    Vh = V @ phi
+    Eh = np.einsum('ab,bc->ac',Tsunami.E, phi)
+    Uh = np.einsum('ab,bc->ac',Tsunami.U, phi)
+    Vh = np.einsum('ab,bc->ac',Tsunami.V, phi)
     
     Xh = theMesh.xh
     Yh = theMesh.yh
@@ -160,18 +161,23 @@ def computeElem(Tsunami):
     Dphidx        = theMesh.dphidx
     Dphidy        = theMesh.dphidy
     
-    EtermDphidx   = sum((Zh * Uh * np.outer(Jac,np.ones(3)) * np.outer(np.ones(theMesh.nElem),weight) * Term).T)
-    EtermDphidy   = sum((Zh * Vh * np.outer(Jac,np.ones(3)) * np.outer(np.ones(theMesh.nElem),weight) * Term).T)
-    UVtermDphi    = sum((g * Eh * Term * np.outer(Jac,np.ones(3)) * np.outer(np.ones(theMesh.nElem),weight)).T)
+    outer         = np.einsum(      "a,b",       Jac, weight)
+    outerTerm     = np.einsum("ab,ab->ab",     outer, Term)
+    ZhouterTerm   = np.einsum("ab,ab->ab", outerTerm, Zh)
     
-    EtermPhi      = Zh * (Xh * Uh + Yh *Vh) * np.outer(Jac,np.ones(3)) * np.outer(np.ones(theMesh.nElem),weight) / (R*R)
-    UtermPhi      = (F * Vh - gamma * Uh + (g * Eh * Xh / (2*R*R))) * np.outer(Jac,np.ones(3)) * np.outer(np.ones(theMesh.nElem),weight)
-    VtermPhi      = (-F * Uh - gamma * Vh + (g * Eh * Yh / (2*R*R))) * np.outer(Jac,np.ones(3)) * np.outer(np.ones(theMesh.nElem),weight)
+    EtermDphidx   = np.einsum( "ab,ab->a",        Uh, ZhouterTerm)
+    EtermDphidx   = np.einsum( "ab,ab->a",        Uh, ZhouterTerm)
+    EtermDphidy   = np.einsum( "ab,ab->a",        Vh, ZhouterTerm)
+    UVtermDphi    = np.einsum(",ab,ab->a",     g, Eh, outerTerm)
     
-    Tsunami.iterU = UtermPhi @ phi + Dphidx * np.outer(UVtermDphi,np.ones(3))
-    Tsunami.iterV = VtermPhi @ phi + Dphidy * np.outer(UVtermDphi,np.ones(3))
-    Tsunami.iterE = EtermPhi @ phi + Dphidx * np.outer(EtermDphidx,np.ones(3)) + Dphidy * np.outer(EtermDphidy,np.ones(3))
+    EhgRR         = np.einsum(  ',ab->ab', g / (2*R*R),Eh)
+    EtermPhi      = np.einsum("  ,ab->ab",   1 / (R*R), np.einsum("ab,ab->ab", np.einsum("ab,ab->ab", Zh, (np.einsum("ab,ab->ab", Xh, Uh) + np.einsum("ab,ab->ab", Yh, Vh))), outer))
+    UtermPhi      = np.einsum('ab,ab->ab', (np.einsum('ab,ab->ab',  F, Vh) - np.einsum(',ab->ab', gamma, Uh) + (np.einsum('ab,ab->ab', EhgRR, Xh))), outer)
+    VtermPhi      = np.einsum('ab,ab->ab', (np.einsum('ab,ab->ab', -F, Uh) - np.einsum(',ab->ab', gamma, Vh) + (np.einsum('ab,ab->ab', EhgRR, Yh))), outer)
     
+    Tsunami.iterU = np.einsum('ab,bc->ac', UtermPhi, phi) + np.einsum('ab,a->ab', Dphidx, UVtermDphi)
+    Tsunami.iterV = np.einsum('ab,bc->ac', VtermPhi, phi) + np.einsum('ab,a->ab', Dphidy, UVtermDphi)
+    Tsunami.iterE = np.einsum('ab,bc->ac', EtermPhi, phi) + np.einsum('ab,a->ab', Dphidx, EtermDphidx) + np.einsum('ab,a->ab', Dphidy, EtermDphidy)
     return
 
         
@@ -195,34 +201,47 @@ def computeEdge(Tsunami):
     
     Zh  = theEdges.zh
     
-    Edges = theEdges.edges
-    MapEdgeLeft  = theEdges.mapEdgeLeft
-    MapEdgeRight = theEdges.mapEdgeRight
-    ElemLeft     = Edges[:,2]
-    ElemRight    = Edges[:,3]
+    Edges         = theEdges.edges
+    MapEdgeLeft   = theEdges.mapEdgeLeft
+    MapEdgeRight  = theEdges.mapEdgeRight
+    ElemLeft      = Edges[:,2]
+    ElemRight     = Edges[:,3]
     
-    UhLeft  = Tsunami.U.flatten()[(3*np.outer(ElemLeft,np.ones(2))+MapEdgeLeft).flatten().astype(int)].reshape((theEdges.nEdges,2)) @ phi
-    VhLeft  = Tsunami.V.flatten()[(3*np.outer(ElemLeft,np.ones(2))+MapEdgeLeft).flatten().astype(int)].reshape((theEdges.nEdges,2)) @ phi
-    EhLeft  = Tsunami.E.flatten()[(3*np.outer(ElemLeft,np.ones(2))+MapEdgeLeft).flatten().astype(int)].reshape((theEdges.nEdges,2)) @ phi
-    UnLeft  = UhLeft * np.outer(Nx,np.ones(2)) + VhLeft * np.outer(Ny,np.ones(2))
+    outerElLeft   = np.einsum('a,b',ElemLeft,np.ones(2))
+    outerElRight  = np.einsum('a,b',ElemRight,np.ones(2))
+    ElLeftMap     = (3*outerElLeft + MapEdgeLeft).flatten().astype(int)
+    ElRightMap    = (3*outerElRight + MapEdgeRight).flatten().astype(int)    
+    UFlat         = Tsunami.U.flatten()
+    VFlat         = Tsunami.V.flatten()
+    EFlat         = Tsunami.E.flatten()
     
-    UhRight = Tsunami.U.flatten()[(3*np.outer(ElemRight,np.ones(2))+MapEdgeRight).flatten().astype(int)].reshape((theEdges.nEdges,2)) @ phi
-    VhRight = Tsunami.V.flatten()[(3*np.outer(ElemRight,np.ones(2))+MapEdgeRight).flatten().astype(int)].reshape((theEdges.nEdges,2)) @ phi
-    EhRight = Tsunami.E.flatten()[(3*np.outer(ElemRight,np.ones(2))+MapEdgeRight).flatten().astype(int)].reshape((theEdges.nEdges,2)) @ phi
-    UnRight = UhRight * np.outer(Nx,np.ones(2)) + VhRight * np.outer(Ny,np.ones(2))
+    
+    UhLeft  = np.einsum('ab,bc->ac',UFlat[ElLeftMap].reshape((theEdges.nEdges,2)), phi)
+    VhLeft  = np.einsum('ab,bc->ac',VFlat[ElLeftMap].reshape((theEdges.nEdges,2)), phi)
+    EhLeft  = np.einsum('ab,bc->ac',EFlat[ElLeftMap].reshape((theEdges.nEdges,2)), phi)
+    UnLeft  = np.einsum('ab,a->ab',UhLeft, Nx) + np.einsum('ab,a->ab',VhLeft, Ny)
+    
+    UhRight = np.einsum('ab,bc->ac',UFlat[ElRightMap].reshape((theEdges.nEdges,2)), phi)
+    VhRight = np.einsum('ab,bc->ac',VFlat[ElRightMap].reshape((theEdges.nEdges,2)), phi)
+    EhRight = np.einsum('ab,bc->ac',EFlat[ElRightMap].reshape((theEdges.nEdges,2)), phi)
+    UnRight = np.einsum('ab,a->ab',UhRight, Nx) + np.einsum('ab,a->ab',VhRight, Ny)
     
     UnRight[0:nBoundary,:] = - UnLeft[0:nBoundary,:]
     EhRight[0:nBoundary,:] =   EhLeft[0:nBoundary,:]
     
-    EStar   = 0.5 * ((EhLeft + EhRight) + np.sqrt(Zh/g) * (UnLeft - UnRight)) 
-    UnStar  = 0.5 * ((UnLeft + UnRight) + np.sqrt(g/Zh) * (EhLeft - EhRight)) 
-    Term    = theEdges.term
-    Eterm   = ((np.outer(np.ones(theEdges.nEdges),weight) * Zh * UnStar * Term) @ phi) * np.outer(Jac,np.ones(2)) / 2
-    Uterm   = ((np.outer(np.ones(theEdges.nEdges),weight) * EStar * Term) @ phi) * np.outer(Nx,np.ones(2)) * g * np.outer(Jac,np.ones(2)) / 2
-    Vterm   = ((np.outer(np.ones(theEdges.nEdges),weight) * EStar * Term) @ phi) * np.outer(Ny,np.ones(2)) * g * np.outer(Jac,np.ones(2)) / 2
+    EStar        = ((EhLeft + EhRight) + np.einsum('ab,ab->ab', np.sqrt(Zh/g), (UnLeft - UnRight))) 
+    UnStar       = ((UnLeft + UnRight) + np.einsum('ab,ab->ab', np.sqrt(g/Zh), (EhLeft - EhRight))) 
+    Term         = theEdges.term
     
-    ElLeft   = ((3 * np.outer(ElemLeft, np.ones(2)).flatten()) + MapEdgeLeft.flatten()).astype(int)
-    ElRight  = ((3 * np.outer(ElemRight,np.ones(2)).flatten()) + MapEdgeRight.flatten()).astype(int)
+    weightTerm   = np.einsum('ab,b->ab',Term,weight)
+    wTEStar      = np.einsum('ab,ab->ab', weightTerm, EStar)
+    wTEStarphi   = np.einsum('ab,bc->ac', wTEStar, phi)
+    wTESpJac     = np.einsum('ab,a->ab',wTEStarphi,Jac)
+    OBO          = np.einsum(',ab->ab', 0.25 * g, wTESpJac)
+    
+    Eterm   = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',np.einsum('ab,ab->ab',np.einsum('ab,ab->ab',weightTerm, UnStar), Zh), phi), Jac) / 4
+    Uterm   = np.einsum('ab,a->ab',OBO, Nx)
+    Vterm   = np.einsum('ab,a->ab',OBO, Ny)
     
     goodOnes = np.ones(2 * theEdges.nEdges)
     goodOnes[0:2 * nBoundary] -= 1
@@ -235,17 +254,17 @@ def computeEdge(Tsunami):
     Uterm = Uterm.flatten()
     Vterm = Vterm.flatten()
     
-    VO = goodOnes * Vterm
-    UO = goodOnes * Uterm
-    EO = goodOnes * Eterm
+    VO = np.einsum('a,a->a', goodOnes, Vterm)
+    UO = np.einsum('a,a->a', goodOnes, Uterm)
+    EO = np.einsum('a,a->a', goodOnes, Eterm)
     
     length = len(iterE)
-    iterE -= np.bincount(ElLeft,  weights = Eterm, minlength = length )
-    iterU -= np.bincount(ElLeft,  weights = Uterm, minlength = length )
-    iterV -= np.bincount(ElLeft,  weights = Vterm, minlength = length )
-    iterE += np.bincount(ElRight, weights = EO,    minlength = length )
-    iterU += np.bincount(ElRight, weights = UO,    minlength = length )
-    iterV += np.bincount(ElRight, weights = VO,    minlength = length )
+    iterE -= np.bincount(ElLeftMap,  weights = Eterm, minlength = length )
+    iterU -= np.bincount(ElLeftMap,  weights = Uterm, minlength = length )
+    iterV -= np.bincount(ElLeftMap,  weights = Vterm, minlength = length )
+    iterE += np.bincount(ElRightMap, weights = EO,    minlength = length )
+    iterU += np.bincount(ElRightMap, weights = UO,    minlength = length )
+    iterV += np.bincount(ElRightMap, weights = VO,    minlength = length )
         
     iterE = iterE.reshape((theMesh.nElem,3))  
     iterU = iterU.reshape((theMesh.nElem,3))  
@@ -258,9 +277,9 @@ def inverseMatrix(Tsunami):
     Ainverse = Tsunami.Ainverse
     JacAdit  = np.outer(theMesh.jacAdit,np.ones(3))
     
-    Tsunami.iterE = (Tsunami.iterE @ Ainverse) / JacAdit
-    Tsunami.iterU = (Tsunami.iterU @ Ainverse) / JacAdit
-    Tsunami.iterV = (Tsunami.iterV @ Ainverse) / JacAdit
+    Tsunami.iterE = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterE, Ainverse), JacAdit)
+    Tsunami.iterU = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterU, Ainverse), JacAdit)
+    Tsunami.iterV = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterV, Ainverse), JacAdit)
     return 
 
 # -------------------------------------------------------------------------
@@ -327,7 +346,7 @@ class Mesh(object):
             self.sinLat   = (4*R*R - self.xh*self.xh - self.yh*self.yh) / (4*R*R + self.xh*self.xh + self.yh*self.yh)
             self.term     = (4*R*R+self.xh*self.xh+self.yh*self.yh)/(4*R*R)        
             self.f        = 2 * self.omega * self.sinLat  
-            self.jacAdit  = abs((self.xElem[:,0]-self.xElem[:,1]) * (self.yElem[:,0]-self.yElem[:,2]) - (self.xElem[:,0]-self.xElem[:,2]) * (self.yElem[:,0]-self.yElem[:,1])) 
+            self.jacAdit  = 1 / abs((self.xElem[:,0]-self.xElem[:,1]) * (self.yElem[:,0]-self.yElem[:,2]) - (self.xElem[:,0]-self.xElem[:,2]) * (self.yElem[:,0]-self.yElem[:,1])) 
     def printf(self):
         print("Number of nodes %d" % self.nNode)
         print("")
@@ -357,7 +376,7 @@ class Edges(object):
     self.mesh = mesh
     self.nEdges = mesh.nElem * 3
     self.nBoundary = 0
-    self.edges = [[0 for i in range(4)] for i in range(self.nEdges)]
+    self.edges = np.zeros((self.nEdges,4)).tolist()
     for i in range (mesh.nElem) :
       for j in range(3) :
         id = i*3 + j
@@ -417,13 +436,17 @@ class Tsunami(object):
         self.U      = U
         self.V      = V
         self.E      = E
-        self.iterU  = np.zeros([self.size,3])
-        self.iterV  = np.zeros([self.size,3])
-        self.iterE  = np.zeros([self.size,3])        
+        self.iterU  = 0
+        self.iterV  = 0
+        self.iterE  = 0
+#        self.iterU1  = np.zeros([self.size,3])
+#        self.iterV1  = np.zeros([self.size,3])
+#        self.iterE1  = np.zeros([self.size,3])
+#        self.iterU2  = np.zeros([self.size,3])
+#        self.iterV2  = np.zeros([self.size,3])
+#        self.iterE2  = np.zeros([self.size,3])
         self.rule1D = IntegrationRule("Edge",2);
         self.rule2D = IntegrationRule("Triangle",3);
-        self.mapEdgeLeft = np.zeros((self.edges.nEdges,3),dtype=np.int)
-        self.mapEdgeRight = np.zeros((self.edges.nEdges,3),dtype=np.int)
     
     def writeFile(self,fileName,iter):
         fileName = fileName % iter
