@@ -1,18 +1,8 @@
-#
-# PYTHON for FEM DUMMIES 18-19
-# Projet "tsunami"
-#
-# Canevas de départ
-#  Vincent Legat
-#
-# -------------------------------------------------------------------------
-# 
-
 import numpy as np
 
 #import sys
 #sys.path.insert(0, '/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/src/Calculator/opt_einsum/optimize')
-from opt_einsum import contract
+#from opt_einsum import contract
 #from threading import Thread, Lock
 
 _gaussTri3Xsi    = np.array([0.166666666666667,0.666666666666667,0.166666666666667])
@@ -97,7 +87,7 @@ def initialConditionOkada(x,y) :
 def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     theTsunami = Tsunami(theFile,U,V,E);
     for n in range(nIter):
-#        print(n)
+        print(n)
         iterCompute(theTsunami,dt);
         if ((n % nSave) == 0):
             theTsunami.writeFile(theResultFiles, n)
@@ -108,26 +98,14 @@ def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     
 def iterCompute(Tsunami,dt):
     theSize = Tsunami.mesh.nElem
-    Tsunami.iterE = np.zeros([theSize,3])
-    Tsunami.iterU = np.zeros([theSize,3])
-    Tsunami.iterV = np.zeros([theSize,3])
-    
-#    threadElem = Thread(target = computeElem,kwargs=dict(Tsunami = Tsunami));
-#    threadEdges = Thread(target = computeEdge,kwargs=dict(Tsunami = Tsunami));
-#    threadElem.start()
-#    threadEdges.start()
-#    threadElem.join()
-#    threadEdges.join()
-#    await mutex.acquire()
-#    Tsunami.iterE = Tsunami.iterE1 + Tsunami.iterE2
-#    Tsunami.iterU = Tsunami.iterU1 + Tsunami.iterU2
-#    Tsunami.iterV = Tsunami.iterV1 + Tsunami.iterV2
-    
+    Tsunami.iterE = np.zeros([theSize,3],dtype=float)
+    Tsunami.iterU = np.zeros([theSize,3],dtype=float)
+    Tsunami.iterV = np.zeros([theSize,3],dtype=float)    
     computeElem(Tsunami);
     computeEdge(Tsunami);
     inverseMatrix(Tsunami);
     Tsunami.E += np.einsum(',ab->ab', dt, Tsunami.iterE)
-#    print(Tsunami.E[27])
+    print(Tsunami.E[27])
     Tsunami.U += np.einsum(',ab->ab', dt, Tsunami.iterU)
     Tsunami.V += np.einsum(',ab->ab', dt, Tsunami.iterV)
     return 
@@ -243,7 +221,7 @@ def computeEdge(Tsunami):
     Uterm   = np.einsum('ab,a->ab',OBO, Nx)
     Vterm   = np.einsum('ab,a->ab',OBO, Ny)
     
-    goodOnes = np.ones(2 * theEdges.nEdges)
+    goodOnes = np.ones(2 * theEdges.nEdges,dtype=float)
     goodOnes[0:2 * nBoundary] -= 1
 
     iterE = Tsunami.iterE.ravel()
@@ -275,11 +253,11 @@ def computeEdge(Tsunami):
 def inverseMatrix(Tsunami):
     theMesh  = Tsunami.mesh
     Ainverse = Tsunami.Ainverse
-    JacAdit  = np.outer(theMesh.jacAdit,np.ones(3))
+    JacAdit  = theMesh.jacAdit
     
-    Tsunami.iterE = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterE, Ainverse), JacAdit)
-    Tsunami.iterU = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterU, Ainverse), JacAdit)
-    Tsunami.iterV = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterV, Ainverse), JacAdit)
+    Tsunami.iterE = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',Tsunami.iterE, Ainverse), JacAdit)
+    Tsunami.iterU = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',Tsunami.iterU, Ainverse), JacAdit)
+    Tsunami.iterV = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',Tsunami.iterV, Ainverse), JacAdit)
     return 
 
 # -------------------------------------------------------------------------
@@ -331,22 +309,22 @@ class Mesh(object):
             self.xElem    = self.x[self.elem]
             self.yElem    = self.y[self.elem]
             self.zElem    = self.z[self.elem]
-            self.dxdxsi   = self.x[self.elem] @ dphidxsi
-            self.dxdeta   = self.x[self.elem] @ dphideta
-            self.dydxsi   = self.y[self.elem] @ dphidxsi
-            self.dydeta   = self.y[self.elem] @ dphideta 
+            self.dxdxsi   = np.einsum('ab,b->a',self.xElem, dphidxsi)
+            self.dxdeta   = np.einsum('ab,b->a',self.xElem, dphideta)
+            self.dydxsi   = np.einsum('ab,b->a',self.yElem, dphidxsi)
+            self.dydeta   = np.einsum('ab,b->a',self.yElem, dphideta)
             self.xStar    = np.array((4*R*R*self.x) / (4*R*R + self.x*self.x + self.y*self.y))
             self.yStar    = np.array((4*R*R*self.y) / (4*R*R + self.x*self.x + self.y*self.y))
-            self.xh       = self.x[self.elem] @ phi
-            self.yh       = self.y[self.elem] @ phi
-            self.zh       = self.z[self.elem] @ phi
+            self.xh       = np.einsum('ab,bc->ac',self.xElem,phi)
+            self.yh       = np.einsum('ab,bc->ac',self.yElem,phi)
+            self.zh       = np.einsum('ab,bc->ac',self.zElem,phi)
             self.jac      = abs(self.dxdxsi*self.dydeta - self.dydxsi*self.dxdeta)
             self.dphidx   = (np.outer(np.ones(self.nElem),dphidxsi) * np.outer(self.dydeta,np.ones(3)) - np.outer(np.ones(self.nElem),dphideta) * np.outer(self.dydxsi,np.ones(3))) / np.outer(self.jac,np.ones(3));
             self.dphidy   = (np.outer(np.ones(self.nElem),dphideta) * np.outer(self.dxdxsi,np.ones(3)) - np.outer(np.ones(self.nElem),dphidxsi) * np.outer(self.dxdeta,np.ones(3))) / np.outer(self.jac,np.ones(3));
             self.sinLat   = (4*R*R - self.xh*self.xh - self.yh*self.yh) / (4*R*R + self.xh*self.xh + self.yh*self.yh)
             self.term     = (4*R*R+self.xh*self.xh+self.yh*self.yh)/(4*R*R)        
             self.f        = 2 * self.omega * self.sinLat  
-            self.jacAdit  = 1 / abs((self.xElem[:,0]-self.xElem[:,1]) * (self.yElem[:,0]-self.yElem[:,2]) - (self.xElem[:,0]-self.xElem[:,2]) * (self.yElem[:,0]-self.yElem[:,1])) 
+            self.jacAdit  = 1 / self.jac
     def printf(self):
         print("Number of nodes %d" % self.nNode)
         print("")
@@ -409,9 +387,9 @@ class Edges(object):
     self.jac = np.sqrt(self.dx*self.dx + self.dy*self.dy)
     self.nx  =   self.dy / self.jac
     self.ny  = - self.dx / self.jac
-    self.xh  = self.mesh.x[self.edges[:,0:2]] @ phi
-    self.yh  = self.mesh.y[self.edges[:,0:2]] @ phi
-    self.zh  = self.mesh.z[self.edges[:,0:2]] @ phi
+    self.xh  = np.einsum('ab,bc->ac',self.mesh.x[self.edges[:,0:2]],phi)
+    self.yh  = np.einsum('ab,bc->ac',self.mesh.y[self.edges[:,0:2]],phi)
+    self.zh  = np.einsum('ab,bc->ac',self.mesh.z[self.edges[:,0:2]],phi)
     self.term= (4*self.mesh.R*self.mesh.R + self.xh*self.xh + self.yh*self.yh)/(4*self.mesh.R*self.mesh.R)
 
     def printf(self):
@@ -439,12 +417,6 @@ class Tsunami(object):
         self.iterU  = 0
         self.iterV  = 0
         self.iterE  = 0
-#        self.iterU1  = np.zeros([self.size,3])
-#        self.iterV1  = np.zeros([self.size,3])
-#        self.iterE1  = np.zeros([self.size,3])
-#        self.iterU2  = np.zeros([self.size,3])
-#        self.iterV2  = np.zeros([self.size,3])
-#        self.iterE2  = np.zeros([self.size,3])
         self.rule1D = IntegrationRule("Edge",2);
         self.rule2D = IntegrationRule("Triangle",3);
     

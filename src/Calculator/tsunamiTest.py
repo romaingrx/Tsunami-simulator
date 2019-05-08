@@ -10,18 +10,22 @@
 # 
 
 import numpy as np
+import time
+import sys
+sys.path.insert(0, '../tsunamiSave/')
 #import tsunamiExperimental as tsunami
-import tsunamiBoucle as tsunami
-#import tsunami as tsunami
+#import tsunamiBoucle as tsunami
+import tsunami as tsunami
 #import tsunamiv2 as tsunami
-#import SauvegardeV0 as tsunami
+#import SaveV2 as tsunami   
 #
 #
 # -1- Lecture des données
 #
 R = 6371220
 #theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/Tiny.txt"
-theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/PacificTriangleFine.txt"
+theMeshFile = "../../Mesh/PacificTriangleFine.txt"
+#theMeshFile = "/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/Mesh/PacificFineZoom.txt"
 [nNode,X,Y,H,nElem,elem] = tsunami.readMesh(theMeshFile)
 print(" == Number of elements : %d " % nElem)
 print(" == Number of nodes    : %d " % nNode)
@@ -42,7 +46,7 @@ for iElem in range(nElem):
   y[iElem][:] = Y[nodes] 
 E = tsunami.initialConditionOkada(x,y)
 
-theResultFiles = "test-%06d.txt"
+theResultFiles = "../../perso-results/compute-%06d.txt"
 tsunami.writeResult(theResultFiles,0,E)
 
 #
@@ -53,8 +57,13 @@ tsunami.writeResult(theResultFiles,0,E)
 U = np.zeros([nElem,3])
 V = np.zeros([nElem,3])
 E = tsunami.readResult(theResultFiles,0,nElem)
-dt = 5; nIter = 2; nSave = 1000
+dt = 5; nIter = 1000; nSave = 100000
+
+tic = time.time()
 [U,V,E] = tsunami.compute(theMeshFile,theResultFiles,U,V,E,dt,nIter,nSave)
+toc = time.time()
+#print(E[27])
+print("-------------------- Exécuté %d itérations en %f secondes sur %s --------------------" % (nIter, (toc-tic), theMeshFile.split('/')[-1]))
 
 #for iElem in [27,28] :
 #  print(" == Elevations for element %d : %14.7e %14.7e %14.7e " % (iElem,*E[iElem][:]) )
