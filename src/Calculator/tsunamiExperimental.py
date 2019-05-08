@@ -10,12 +10,19 @@
 
 import numpy as np
 
+#import sys
+#sys.path.insert(0, '/Users/romaingraux/Library/Mobile Documents/com~apple~CloudDocs/Professionel/EPL/Q4/MAP/Elements finis/Projet/src/Calculator/opt_einsum/optimize')
+#from opt_einsum import contract
+#from threading import Thread, Lock
+
 _gaussTri3Xsi    = np.array([0.166666666666667,0.666666666666667,0.166666666666667])
 _gaussTri3Eta    = np.array([0.166666666666667,0.166666666666667,0.666666666666667])
 _gaussTri3Weight = np.array([0.166666666666667,0.166666666666667,0.166666666666667])
 
-_gaussEdg2Xsi    = np.array([0.5773502691896257, -0.5773502691896257])
+_gaussEdg2Xsi    = np.array([-0.5773502691896257, 0.5773502691896257])
 _gaussEdg2Weight = np.array([1.0,1.0])
+
+#mutex = Lock()
 
         
 def xStar(x,y,R):
@@ -88,8 +95,9 @@ def initialConditionOkada(x,y) :
 # -------------------------------------------------------------------------
 
 def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
-    theTsunami = Tsunami(theFile,U,V,E);
+    theTsunami = Tsunami(theFile,U,V,E,dt);
     for n in range(nIter):
+        print(n)
         iterCompute(theTsunami,dt);
         if ((n % nSave) == 0):
             theTsunami.writeFile(theResultFiles, n)
@@ -99,263 +107,276 @@ def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
 # -------------------------------------------------------------------------
     
 def iterCompute(Tsunami,dt):
-    theSize = Tsunami.mesh.nElem
+    theMesh       = Tsunami.mesh
+    theEdges      = Tsunami.edges
+    theSize       = Tsunami.mesh.nElem
     Tsunami.iterE = np.zeros([theSize,3])
     Tsunami.iterU = np.zeros([theSize,3])
     Tsunami.iterV = np.zeros([theSize,3])
+    
+    E        = Tsunami.E
+    xElem    = theMesh.xElem
+    yElem    = theMesh.yElem
+    
+    delta    = Tsunami.dt * 300
+    
+    Elements = np.unique(np.nonzero(E)[0])
+#    print(Elements)
+    
+    XELEL    = xElem[Elements]
+    YELEL    = yElem[Elements]
+    xMax     = np.amax(XELEL) + delta
+    xMin     = np.amin(XELEL) - delta
+    yMax     = np.amax(YELEL) + delta
+    yMin     = np.amin(YELEL) - delta
+    
+#    print(xStar([xMin,xMax],[yMin,yMax],Tsunami.R))
+    
+    xElemMax = np.einsum('ab->a',(xElem < xMax))
+    xElemMin = np.einsum('ab->a',(xElem > xMin))
+    yElemMax = np.einsum('ab->a',(yElem < yMax))
+    yElemMin = np.einsum('ab->a',(yElem > yMin))
+    
+    xE = np.einsum('a,a->a',xElemMax,xElemMin)
+    yE = np.einsum('a,a->a',yElemMax,yElemMin)
+#    print(E)
+    Tsunami.Elements = np.nonzero((xE + yE) > 0)[0]
+    Tsunami.Edges    = np.nonzero(np.einsum('ab->a',np.isin(theEdges.edges[:,2:4],Elements)))[0]
+#    print(len(Tsunami.Elements))
+    
+    
+#    print(len(Tsunami.Elements))
+    
+#    threadElem = Thread(target = computeElem,kwargs=dict(Tsunami = Tsunami));
+#    threadEdges = Thread(target = computeEdge,kwargs=dict(Tsunami = Tsunami));
+#    threadElem.start()
+#    threadEdges.start()
+#    threadElem.join()
+#    threadEdges.join()
+#    await mutex.acquire()
+#    Tsunami.iterE = Tsunami.iterE1 + Tsunami.iterE2
+#    Tsunami.iterU = Tsunami.iterU1 + Tsunami.iterU2
+#    Tsunami.iterV = Tsunami.iterV1 + Tsunami.iterV2
+    
     computeElem(Tsunami);
-#    computeEdge(Tsunami);
-#    inverseMatrix(Tsunami);
-#    print(Tsunami.U[0:10,:])
-    Tsunami.E += dt * Tsunami.iterE 
-    Tsunami.U += dt * Tsunami.iterU
-    Tsunami.V += dt * Tsunami.iterV
-#    print(Tsunami.U[0:5,:])
+    computeEdge(Tsunami);
+    inverseMatrix(Tsunami);
+    Tsunami.E += np.einsum(',ab->ab', dt, Tsunami.iterE)
+#    print(sum(Tsunami.E.flatten()))
+#    print(sum(Tsunami.E[Tsunami.Elements].flatten()))
+    print(Tsunami.E[27])
+    Tsunami.U += np.einsum(',ab->ab', dt, Tsunami.iterU)
+    Tsunami.V += np.einsum(',ab->ab', dt, Tsunami.iterV)
+#    print("Vraie valeur de E : %6f" %sum(Tsunami.E.flatten()))
+#    print(sum(Tsunami.E[Tsunami.Elements].flatten()))
+#    print("Valeur optimisée de E : %6f" % Tsunami.E[Tsunami.Elements])
+    
     return 
 
 # -------------------------------------------------------------------------
-    
+        
 def computeElem(Tsunami):
     theMesh = Tsunami.mesh;
     theRule = Tsunami.rule2D;
     
-    U       = Tsunami.U;
-    V       = Tsunami.V;
-    E       = Tsunami.E;
-    iterU   = Tsunami.iterU;
-    iterV   = Tsunami.iterV;
-    iterE   = Tsunami.iterE;
-    X       = theMesh.xStar;
-    Y       = theMesh.yStar;
-    Z       = theMesh.zStar;
-    R       = Tsunami.R; 
-    omega   = Tsunami.omega;
-    gamma   = Tsunami.gamma
-    g       = Tsunami.g
+    R      = Tsunami.R; 
+    gamma  = Tsunami.gamma
+    g      = Tsunami.g
     xsi    = theRule.xsi;
     eta    = theRule.eta;
     weight = theRule.weight;
-    phi = np.array([1-xsi-eta,xsi,eta])
-    dphidxsi = np.array([ -1.0, 1.0,0.0])
-    dphideta = np.array([ -1.0, 0.0,1.0])
-    for iElem in range(theMesh.nElem):
-        mapCoord = theMesh.elem[iElem];
-        
-        xloc     = X[mapCoord]
-        yloc     = Y[mapCoord]
-        zloc     = Z[mapCoord]
-        
-        eloc     = E[iElem,:]
-        uloc     = U[iElem,:]
-        vloc     = V[iElem,:]
-        
-        dxdxsiRomain   = xloc @ dphidxsi
-        dxdetaRomain   = xloc @ dphideta
-        dydxsiRomain   = yloc @ dphidxsi
-        dydetaRomain   = yloc @ dphideta
-        
-        jacRomain = abs(dxdxsiRomain*dydetaRomain - dydxsiRomain*dxdetaRomain)
-        dphidx = (dphidxsi * dydetaRomain - dphideta * dydxsiRomain) / jacRomain;
-        dphidy = (dphideta * dxdxsiRomain - dphidxsi * dxdetaRomain) / jacRomain;
-        
-        eh = phi @ eloc
-        uh = phi @ uloc
-        vh = phi @ vloc
-        
-        xh = phi @ xloc
-        yh = phi @ yloc
-        zh = phi @ zloc
-        
-        sinLat = (4*R*R - xh*xh - yh*yh) / (4*R*R + xh*xh + yh*yh)
-        term = (4*R*R+xh*xh+yh*yh)/(4*R*R)        
-        f = 2 * omega * sinLat
-        
-        for k in range(theRule.n):
-#            xsik = xsi[k] 
-#            etak = eta[k]
-            weightk = weight[k]
-            phik = phi[k,:]
-            
-            dxdxsi   = 0
-            dxdeta   = 0
-            dydxsi   = 0
-            dydeta   = 0
-            for i in range(3):
-                dxdxsi += xloc[i]*dphidxsi[i];
-                dxdeta += xloc[i]*dphideta[i];
-                dydxsi += yloc[i]*dphidxsi[i];
-                dydeta += yloc[i]*dphideta[i];
-            jac = abs(dxdxsi*dydeta - dydxsi*dxdeta)
-            x=0; y=0; h=0;e=0;u=0;v=0
-            for i in range(3):
-                x += xloc[i]*phik[i]
-                y += yloc[i]*phik[i]
-                h += zloc[i]*phik[i]
-                e += eloc[i]*phik[i]
-                u += uloc[i]*phik[i]
-                v += vloc[i]*phik[i]
-#            if (iElem == 0):
-#                print(dphidx,dphidxRomain)
-            lat = ((4*R*R-x*x-y*y))/(4*R*R+x*x+y*y)
-            coriolis = 2*omega*lat
-            sphere = ((4*R*R+x*x+y*y)/(4*R*R))
-#            if (iElem == 0):
-#                print(dphi)
-            
-#            for i in range(3):
-#                iterE[iElem,i] += ((dphidx[i]*zh[k]*uh[k]+dphidy[i]*zh[k]*vh[k])*term[k] + (phik[i]*(zh[k]*(xh[k]*uh[k]+yh[k]*vh[k])/(R*R))))            * jac*weightk;
-#                iterU[iElem,i] += ((phik[i]*(f[k]*vh[k]-gamma*uh[k])+dphidx[i]*g*eh[k]*term[k]) + (phik[i]*g*x*e/(2*R*R)))    * jac*weightk;
-#                iterV[iElem,i] += ((phik[i]*(-coriolis*u-gamma*v) + dphidy[i]*g*e*sphere) + (phik[i]*g*y*e/(2*R*R))) * jac*weightk;
-        EtermDphidx = sum(zh*uh*jac*weight*term)
-        EtermDphidy = sum(zh*vh*jac*weight*term)
-        EtermPhi = zh * (xh * uh + yh *vh) * jac * weight / (R*R)
-        UtermPhi = (f * vh - gamma * uh + (g * eh * xh / (2*R*R))) * jac * weight
-        UVtermDphi = sum(g * eh * term * jac * weight)
-        VtermPhi = (-f * uh - gamma * vh + (g * eh * yh / (2*R*R))) * jac *weight
-#        if(iElem == 0):
-#            print(phi[:,0]*(g * xh / (2*R*R)))
-#            print(((f[0] * vh[0] - gamma * uh[0] + g * xh[0] / (2*R*R)) * jac * weight[0] * phi[0,:]) + ((f[1] * vh[1] - gamma * uh[1] + g * xh[1] / (2*R*R)) * jac * weight[1] * phi[1,:]) + ((f[2] * vh[2] - gamma * uh[2] + g * xh[2] / (2*R*R)) * jac * weight[2] * phi[2,:]))
-        iterU[iElem,:] += (UtermPhi @ phi) + (dphidx * UVtermDphi)
-        iterV[iElem,:] += (VtermPhi @ phi) + (dphidy * UVtermDphi)
-        iterE[iElem,:] += (EtermPhi @ phi) + (dphidx * EtermDphidx + dphidy * EtermDphidy)
-        
-        
-#        if (iElem < 3):
-#            print((phi.T @ termPhi) + sum(np.outer(termDphi,dphidx)))
-#        if(iElem == 2):
-#            print(iterU[iElem,:])
-    print(iterU[0:3,:])
+    phi    = np.array([1-xsi-eta,xsi,eta])
+    
+    Elem = Tsunami.Elements
+    
+    Eh = np.einsum('ab,bc->ac',Tsunami.E[Elem], phi)
+    Uh = np.einsum('ab,bc->ac',Tsunami.U[Elem], phi)
+    Vh = np.einsum('ab,bc->ac',Tsunami.V[Elem], phi)
+    
+    Xh = theMesh.xh[Elem]
+    Yh = theMesh.yh[Elem]
+    Zh = theMesh.zh[Elem]
+    
+    Jac  = theMesh.jac[Elem]
+    Term = theMesh.term[Elem]
+    F    = theMesh.f[Elem]
+    
+    Dphidx        = theMesh.dphidx[Elem]
+    Dphidy        = theMesh.dphidy[Elem] 
+    
+    outer         = np.einsum(      "a,b",       Jac, weight)
+    outerTerm     = np.einsum("ab,ab->ab",     outer, Term)
+    ZhouterTerm   = np.einsum("ab,ab->ab", outerTerm, Zh)
+    
+    EtermDphidx   = np.einsum( "ab,ab->a",        Uh, ZhouterTerm)
+    EtermDphidx   = np.einsum( "ab,ab->a",        Uh, ZhouterTerm)
+    EtermDphidy   = np.einsum( "ab,ab->a",        Vh, ZhouterTerm)
+    UVtermDphi    = np.einsum(",ab,ab->a",   g,   Eh, outerTerm)
+    
+    EhgRR         = np.einsum(  ',ab->ab', g / (2*R*R),Eh)
+    EtermPhi      = np.einsum("  ,ab->ab",   1 / (R*R), np.einsum("ab,ab->ab", np.einsum("ab,ab->ab", Zh, (np.einsum("ab,ab->ab", Xh, Uh) + np.einsum("ab,ab->ab", Yh, Vh))), outer))
+    UtermPhi      = np.einsum('ab,ab->ab', (np.einsum('ab,ab->ab',  F, Vh) - np.einsum(',ab->ab', gamma, Uh) + (np.einsum('ab,ab->ab', EhgRR, Xh))), outer)
+    VtermPhi      = np.einsum('ab,ab->ab', (np.einsum('ab,ab->ab', -F, Uh) - np.einsum(',ab->ab', gamma, Vh) + (np.einsum('ab,ab->ab', EhgRR, Yh))), outer)
+#    print(len(VtermPhi))
+    
+    Tsunami.iterU[Elem] = np.einsum('ab,bc->ac', UtermPhi, phi) + np.einsum('ab,a->ab', Dphidx, UVtermDphi)
+    Tsunami.iterV[Elem] = np.einsum('ab,bc->ac', VtermPhi, phi) + np.einsum('ab,a->ab', Dphidy, UVtermDphi)
+    Tsunami.iterE[Elem] = np.einsum('ab,bc->ac', EtermPhi, phi) + np.einsum('ab,a->ab', Dphidx, EtermDphidx) + np.einsum('ab,a->ab', Dphidy, EtermDphidy)
     return
-
         
 
 # -------------------------------------------------------------------------
     
 def computeEdge(Tsunami):
-    theMesh = Tsunami.mesh;
+    theMesh = Tsunami.mesh
     theRule = Tsunami.rule1D;
     theEdges= Tsunami.edges;
     
-    U       = Tsunami.U;
-    V       = Tsunami.V;
-    E       = Tsunami.E;
-    iterU   = Tsunami.iterU;
-    iterV   = Tsunami.iterV;
-    iterE   = Tsunami.iterE;
-    X       = theMesh.xStar;
-    Y       = theMesh.yStar;
-    Z       = theMesh.zStar;
-    R       = Tsunami.R; 
     g       = Tsunami.g
     xsi    = theRule.xsi;
     weight = theRule.weight;
     phi = np.asarray([1.0-xsi,1.0+xsi])/ 2
-    for iEdge in range(theEdges.nBoundary,theEdges.nEdges):
-        nodes = theEdges.edges[iEdge][0:2]
+
+    EdgesIn = Tsunami.Edges 
+#    print(Tsunami.Edges)
+#    EdgesIn = np.arange(theEdges.nEdges)
+    nEdges = len(EdgesIn)
+    nBoundary = len(np.nonzero(np.clip(theEdges.edges[EdgesIn,-1],-theMesh.nElem - 10,0))[0])
+    
+    Jac = theEdges.jac[EdgesIn]
+    Nx  = theEdges.nx[EdgesIn]
+    Ny  = theEdges.ny[EdgesIn]
+    
+    Zh  = theEdges.zh[EdgesIn]
+    
+    Edges         = theEdges.edges[EdgesIn]
+    MapEdgeLeft   = theEdges.mapEdgeLeft[EdgesIn]
+    MapEdgeRight  = theEdges.mapEdgeRight[EdgesIn]
+    ElemLeft      = Edges[:,2]
+    ElemRight     = np.clip(Edges[:,3],0,theMesh.nElem+10)
+    
+    
+    
+    outerElLeft   = np.einsum('a,b',ElemLeft,np.ones(2))
+    outerElRight  = np.einsum('a,b',ElemRight,np.ones(2))
+    ElLeftMap     = (3*outerElLeft + MapEdgeLeft).flatten().astype(int)
+    ElRightMap    = (3*outerElRight + MapEdgeRight).flatten().astype(int)    
+    
+    UEdgLeft = np.array([Tsunami.U[ElemLeft,MapEdgeLeft[:,0]],Tsunami.U[ElemLeft,MapEdgeLeft[:,1]]]).T
+    VEdgLeft = np.array([Tsunami.V[ElemLeft,MapEdgeLeft[:,0]],Tsunami.V[ElemLeft,MapEdgeLeft[:,1]]]).T
+    EEdgLeft = np.array([Tsunami.E[ElemLeft,MapEdgeLeft[:,0]],Tsunami.E[ElemLeft,MapEdgeLeft[:,1]]]).T
+    
+    UEdgRight = np.array([Tsunami.U[ElemRight,MapEdgeRight[:,0]],Tsunami.U[ElemRight,MapEdgeRight[:,1]]]).T
+    VEdgRight = np.array([Tsunami.V[ElemRight,MapEdgeRight[:,0]],Tsunami.V[ElemRight,MapEdgeRight[:,1]]]).T
+    EEdgRight = np.array([Tsunami.E[ElemRight,MapEdgeRight[:,0]],Tsunami.E[ElemRight,MapEdgeRight[:,1]]]).T
+    
+    UhLeft  = np.einsum('ab,bc->ac',UEdgLeft, phi)
+    VhLeft  = np.einsum('ab,bc->ac',VEdgLeft, phi)
+    EhLeft  = np.einsum('ab,bc->ac',EEdgLeft, phi)
+    UnLeft  = np.einsum('ab,a->ab',UhLeft, Nx) + np.einsum('ab,a->ab',VhLeft, Ny)
+    
+    UhRight = np.einsum('ab,bc->ac',UEdgRight, phi)
+    VhRight = np.einsum('ab,bc->ac',VEdgRight, phi)
+    EhRight = np.einsum('ab,bc->ac',EEdgRight, phi)
+    UnRight = np.einsum('ab,a->ab',UhRight, Nx) + np.einsum('ab,a->ab',VhRight, Ny)
+    
+    UnRight[0:nBoundary,:] = - UnLeft[0:nBoundary,:]
+    EhRight[0:nBoundary,:] =   EhLeft[0:nBoundary,:]
+    
+    EStar        = ((EhLeft + EhRight) + np.einsum('ab,ab->ab', np.sqrt(Zh/g), (UnLeft - UnRight))) 
+    UnStar       = ((UnLeft + UnRight) + np.einsum('ab,ab->ab', np.sqrt(g/Zh), (EhLeft - EhRight))) 
+    Term         = theEdges.term[EdgesIn]
+    
+    weightTerm   = np.einsum('ab,b->ab',Term,weight)
+    wTEStar      = np.einsum('ab,ab->ab', weightTerm, EStar)
+    wTEStarphi   = np.einsum('ab,bc->ac', wTEStar, phi)
+    wTESpJac     = np.einsum('ab,a->ab',wTEStarphi,Jac)
+    OBO          = np.einsum(',ab->ab', 0.25 * g, wTESpJac)
+
+    Eterm   = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',np.einsum('ab,ab->ab',np.einsum('ab,ab->ab',weightTerm, UnStar), Zh), phi), Jac) / 4
+    Uterm   = np.einsum('ab,a->ab',OBO, Nx)
+    Vterm   = np.einsum('ab,a->ab',OBO, Ny)
+    
+    goodOnes2 = np.ones((nEdges,2))
+    goodOnes2[:nBoundary] -= 1    
+    
+    goodOnes = np.ones(2 * nEdges)
+    goodOnes[0:2 * nBoundary] -= 1
+    
+    Eterm2 = np.copy(Eterm)
+    Uterm2 = np.copy(Uterm)
+    Vterm2 = np.copy(Vterm)
+    
+    Eterm = Eterm.flatten()
+    Uterm = Uterm.flatten()
+    Vterm = Vterm.flatten()
+    
+    VO = np.einsum('a,a->a', goodOnes, Vterm)
+    UO = np.einsum('a,a->a', goodOnes, Uterm)
+    EO = np.einsum('a,a->a', goodOnes, Eterm)
+    
+#    VO2 = np.einsum('ab,ab->ab', goodOnes2, Vterm2)
+#    UO2 = np.einsum('ab,ab->ab', goodOnes2, Uterm2)
+#    EO2 = np.einsum('ab,ab->ab', goodOnes2, Eterm2)
+
+    iterE = Tsunami.iterE
+    iterU = Tsunami.iterU
+    iterV = Tsunami.iterV
+    
+#    ETERM = Eterm2[np.nonzero(Eterm2[:,0]),0]
+#    print(len(iterE[:,0]))
+#    EbinLeft0 = np.bincount(ElemLeft,  weights = Eterm2[:,0])
+#    ELeft0    = np.nonzero(EbinLeft0)[0]
+#    print(ELeft0)
+#    EbinLeft1 = np.bincount(ElemLeft,  weights = Eterm2[:,1])
+#    ELeft1    = np.nonzero(EbinLeft1)[0]  
+    
+#    iterE[ELeft0,theEdges.mapEdgeLeft[ELeft0,0]] -= EbinLeft0[ELeft0]
+#    iterE[ELeft1,theEdges.mapEdgeLeft[ELeft1,1]] -= EbinLeft1[ELeft1]
+#    iterU[ElemLeft,MapEdgeLeft[:,0]] -= Uterm2[:,0]
+#    iterU[ElemLeft,MapEdgeLeft[:,1]] -= Uterm2[:,1]
+#    iterV[ElemLeft,MapEdgeLeft[:,0]] -= Vterm2[:,0]
+#    iterV[ElemLeft,MapEdgeLeft[:,1]] -= Vterm2[:,1]
+#    
+#    iterE[ElemLeft,MapEdgeLeft[:,0]] += EO2[:,0]
+#    iterE[ElemLeft,MapEdgeLeft[:,1]] += EO2[:,1]
+#    iterU[ElemLeft,MapEdgeLeft[:,0]] += UO2[:,0]
+#    iterU[ElemLeft,MapEdgeLeft[:,1]] += UO2[:,1]
+#    iterV[ElemLeft,MapEdgeLeft[:,0]] += VO2[:,0]
+#    iterV[ElemLeft,MapEdgeLeft[:,1]] += VO2[:,1]
+    
+    iterE = iterE.ravel()
+    iterU = iterU.ravel()
+    iterV = iterV.ravel()
+    
+    length = len(iterE)
+#    print("EbinLeft0 : ",len(EbinLeft0))
+#    print("Eterm[:,0] : ",len(Eterm2[:,0]))
+    
+#    print(len(Eterm2))
+    iterE -= np.bincount(ElLeftMap,  weights = Eterm, minlength = length )
+    iterU -= np.bincount(ElLeftMap,  weights = Uterm, minlength = length )
+    iterV -= np.bincount(ElLeftMap,  weights = Vterm, minlength = length )
+    iterE += np.bincount(ElRightMap, weights = EO,    minlength = length )
+    iterU += np.bincount(ElRightMap, weights = UO,    minlength = length )
+    iterV += np.bincount(ElRightMap, weights = VO,    minlength = length )
         
-        x = X[nodes]
-        y = Y[nodes]
-        z = Z[nodes]
-        
-        mapEdgeLeft  = Tsunami.mapEdgeLeft[iEdge][1:3]
-        mapEdgeRight = Tsunami.mapEdgeRight[iEdge][1:3]
-        
-        iElemLeft = Tsunami.mapEdgeLeft[iEdge][0]
-        iElemRight = Tsunami.mapEdgeRight[iEdge][1]
-        
-        dx      = x[1] - x[0]
-        dy      = y[1] - y[0]
-        jac     = np.sqrt(dx*dx+dy*dy)
-        nx      = dy / jac
-        ny      = -dx / jac
-        jac     = 0.5 * jac
-        
-        x = phi @ x
-        y = phi @ y
-        z = phi @ z
-        
-        uhLeft = phi @ U[iElemLeft][mapEdgeLeft]
-        vhLeft = phi @ V[iElemLeft][mapEdgeLeft]
-        uhRight = phi @ U[iElemRight][mapEdgeRight]
-        vhRight = phi @ V[iElemRight][mapEdgeRight]
-        eLeft   = phi @ E[iElemLeft][mapEdgeLeft]
-        eRight = phi @ E[iElemRight][mapEdgeRight]  
-        
-        unLeft  = uhLeft * nx + vhLeft * ny
-        unRight = uhRight * nx + vhRight * ny    
-             
-        eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
-        unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
-        
-        term = (4*R*R+x*x+y*y)/(4*R*R)
-      
-        
-        
-                
-        iterE[iElemLeft][mapEdgeLeft]   -= ((weight * z * unStar * term) @ phi) * jac
-        iterE[iElemRight][mapEdgeRight] += ((weight * z * unStar * term) @ phi) * jac
-        iterU[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * nx * g * jac
-        iterU[iElemRight][mapEdgeRight] += ((weight * eStar * term) @ phi) * nx * g * jac
-        iterV[iElemLeft][mapEdgeLeft]   -= ((weight * eStar * term) @ phi) * ny * g * jac
-        iterV[iElemRight][mapEdgeRight] += ((weight * eStar * term) @ phi) * ny * g * jac
-        
-        
-    for iEdge in range(theEdges.nBoundary):
-        nodes = theEdges.edges[iEdge][0:2]
-        x = X[nodes]
-        y = Y[nodes]
-        z = Z[nodes]
-        
-        mapEdgeLeft  = Tsunami.mapEdgeLeft[iEdge][1:3]
-            
-        iElemLeft = Tsunami.mapEdgeLeft[iEdge][0]
-            
-        dx      = x[1] - x[0]
-        dy      = y[1] - y[0]
-        jac     = np.sqrt(dx*dx+dy*dy)
-        nx      = dy / jac
-        ny      = -dx / jac
-        jac     = 0.5 * jac
-        
-        x = phi @ x
-        y = phi @ y
-        z = phi @ z
-        
-        uhLeft = phi @ U[iElemLeft][mapEdgeLeft]
-        vhLeft = phi @ V[iElemLeft][mapEdgeLeft]
-        
-        unLeft  = uhLeft * nx + vhLeft * ny
-        unRight = -unLeft
-        eLeft   = phi @ E[iElemLeft][mapEdgeLeft]
-        eRight  = eLeft
-        
-        eStar   = 0.5 * ((eLeft + eRight)   + np.sqrt(z/g) * (unLeft - unRight))     
-        unStar  = 0.5 * ((unLeft + unRight) + np.sqrt(g/z) * (eLeft - eRight))
-        
-        term = (4*R*R+x*x+y*y)/(4*R*R)
-        
-        
-        iterE[iElemLeft][mapEdgeLeft]   -= (phi @ (weight * z * unStar * term)) * jac 
-        iterU[iElemLeft][mapEdgeLeft]   -= (phi @ (weight * eStar * term * nx)) * g * jac 
-        iterV[iElemLeft][mapEdgeLeft]   -= (phi @ (weight * eStar * term * ny)) * g * jac 
-            
-    return 
+    iterE = iterE.reshape((theMesh.nElem,3))  
+    iterU = iterU.reshape((theMesh.nElem,3))  
+    iterV = iterV.reshape((theMesh.nElem,3))  
+    
+    return   
 
 def inverseMatrix(Tsunami):
-    theMesh = Tsunami.mesh
-    iterU   = Tsunami.iterU;
-    iterV   = Tsunami.iterV;
-    iterE   = Tsunami.iterE;
-    Ainverse = np.array([[18.0,-6.0,-6.0],[-6.0,18.0,-6.0],[-6.0,-6.0,18.0]])
-    for iElem in range(theMesh.nElem) :
-      nodes = theMesh.elem[iElem]
-      x = theMesh.x[nodes]
-      y = theMesh.y[nodes]
-      jac = abs((x[0]-x[1]) * (y[0]-y[2]) - (x[0]-x[2]) * (y[0]-y[1]))    
-      iterE[iElem] = Ainverse @ iterE[iElem] / jac
-      iterU[iElem] = Ainverse @ iterU[iElem] / jac
-      iterV[iElem] = Ainverse @ iterV[iElem] / jac
+    theMesh  = Tsunami.mesh
+    Ainverse = Tsunami.Ainverse
+    JacInv = theMesh.jacInv
+    
+    Tsunami.iterE = np.einsum('a,ab->ab', JacInv, np.einsum('ab,bc->ac',Tsunami.iterE, Ainverse))
+    Tsunami.iterU = np.einsum('a,ab->ab', JacInv, np.einsum('ab,bc->ac',Tsunami.iterU, Ainverse))
+    Tsunami.iterV = np.einsum('a,ab->ab', JacInv, np.einsum('ab,bc->ac',Tsunami.iterV, Ainverse))
     return 
+
 # -------------------------------------------------------------------------
 # |//////////////////////////---- CLASS ----//////////////////////////////|   
 # -------------------------------------------------------------------------
@@ -387,21 +408,38 @@ class IntegrationRule(object):
 class Mesh(object):
     
     def __init__(self,fileName,R):
+        self.R = R
+        dphidxsi = np.array([ -1.0, 1.0,0.0])
+        dphideta = np.array([ -1.0, 0.0,1.0])
+        xsi = _gaussTri3Xsi
+        eta = _gaussTri3Eta
+        phi = np.array([1-xsi-eta,xsi,eta])
+        self.omega = 2*np.pi / 86400
         with open(fileName,"r") as f :
             self.nNode = int(f.readline().split()[3])
             self.xyz   = np.array(list(list(float(w) for w in f.readline().split()[2:]) for i in range(self.nNode)))
-            self.xyz[:,2] = self.xyz[:,2].clip(100)
             self.nElem = int(f.readline().split()[3])
             self.elem  = np.array(list(list(int(w)   for w in f.readline().split()[2:]) for i in range(self.nElem)))
-            self.xStar = self.xyz[:,0]
-            self.yStar = self.xyz[:,1]
-            self.zStar = self.xyz[:,2] 
-            self.xy    = np.array(list(list(np.array([2*R*self.xStar[i] / (R + self.zStar[i]),2*R*self.yStar[i] / (R + self.zStar[i])]) for i in range(self.nNode))))
-            self.x     = self.xy[:,0]
-            self.y     = self.xy[:,1] 
-            self.lola  = np.array(list(list(np.array([np.arctan2(self.yStar[i],self.xStar[i])*180/np.pi,np.arcsin(self.zStar[i]/R)*180/np.pi]) for i in range(self.nNode))))
-            self.longitude = self.lola[:,0]
-            self.latitude = self.lola[:,1]            
+            self.x = self.xyz[:,0]
+            self.y = self.xyz[:,1]
+            self.z = self.xyz[:,2]
+            self.xElem    = self.x[self.elem]
+            self.yElem    = self.y[self.elem]
+            self.zElem    = self.z[self.elem]
+            self.dxdxsi   = np.einsum('ab,b->a',self.xElem, dphidxsi)
+            self.dxdeta   = np.einsum('ab,b->a',self.xElem, dphideta)
+            self.dydxsi   = np.einsum('ab,b->a',self.yElem, dphidxsi)
+            self.dydeta   = np.einsum('ab,b->a',self.yElem, dphideta)
+            self.xh       = np.einsum('ab,bc->ac',self.x[self.elem], phi)
+            self.yh       = np.einsum('ab,bc->ac',self.y[self.elem], phi)
+            self.zh       = np.einsum('ab,bc->ac',self.z[self.elem], phi)
+            self.jac      = abs(self.dxdxsi*self.dydeta - self.dydxsi*self.dxdeta)
+            self.jacInv   = 1 / self.jac
+            self.dphidx   = np.einsum('a,ab->ab', self.jacInv , (np.einsum('a,b', self.dydeta, dphidxsi) - np.einsum('a,b', self.dydxsi, dphideta)));
+            self.dphidy   = np.einsum('a,ab->ab', self.jacInv , (np.einsum('a,b', self.dxdxsi, dphideta) - np.einsum('a,b', self.dxdeta, dphidxsi)));
+            self.sinLat   = (4*R*R - self.xh*self.xh - self.yh*self.yh) / (4*R*R + self.xh*self.xh + self.yh*self.yh)
+            self.term     = (4*R*R+self.xh*self.xh+self.yh*self.yh)/(4*R*R)        
+            self.f        = 2 * self.omega * self.sinLat  
             
     def printf(self):
         print("Number of nodes %d" % self.nNode)
@@ -427,10 +465,12 @@ class Mesh(object):
 class Edges(object):
 
   def __init__(self,mesh):
+    xsi = _gaussEdg2Xsi 
+    phi = np.asarray([1.0-xsi,1.0+xsi])/ 2
     self.mesh = mesh
     self.nEdges = mesh.nElem * 3
     self.nBoundary = 0
-    self.edges = [[0 for i in range(4)] for i in range(self.nEdges)]
+    self.edges = np.zeros((self.nEdges,4)).tolist()
     for i in range (mesh.nElem) :
       for j in range(3) :
         id = i*3 + j
@@ -450,51 +490,60 @@ class Edges(object):
     self.edges.sort(key = lambda item : item[3])
     self.nBoundary = 2*index - self.nEdges
     self.nEdges = index
-
-  def printf(self):
-    print("Number of edges %d" % self.nEdges)
-    print("Number of boundary edges %d" % self.nBoundary)
+    self.edges = np.array(self.edges)
+    self.nodesLeft    = self.mesh.elem[self.edges[:,2]]
+    self.nodesRight   = self.mesh.elem[self.edges[:,3]]
+    self.mapEdgeLeft = np.zeros((self.nEdges,2),dtype = int); self.mapEdgeRight = np.zeros((self.nEdges,2), dtype = int) ;
     for i in range(self.nEdges):
-      print("%6d : %4d %4d : %4d %4d" % (i,*self.edges[i]))
+        self.mapEdgeLeft[i,:] = [np.nonzero(self.nodesLeft[i] == self.edges[i,j])[0][0] for j in range(2)]
+        if (i >= self.nBoundary):
+            self.mapEdgeRight[i,:] = np.array([np.nonzero(self.nodesRight[i] == self.edges[i,j])[0][0] for j in range(2)])
+    self.dx = self.mesh.x[self.edges[:,1]] - self.mesh.x[self.edges[:,0]]
+    self.dy = self.mesh.y[self.edges[:,1]] - self.mesh.y[self.edges[:,0]]
+    self.jac = np.sqrt(self.dx*self.dx + self.dy*self.dy)
+    self.nx  =   self.dy / self.jac
+    self.ny  = - self.dx / self.jac
+    self.xh  = self.mesh.x[self.edges[:,0:2]] @ phi
+    self.yh  = self.mesh.y[self.edges[:,0:2]] @ phi
+    self.zh  = self.mesh.z[self.edges[:,0:2]] @ phi
+    self.term= (4*self.mesh.R*self.mesh.R + self.xh*self.xh + self.yh*self.yh)/(4*self.mesh.R*self.mesh.R)
+
+    def printf(self):
+        print("Number of edges %d" % self.nEdges)
+        print("Number of boundary edges %d" % self.nBoundary)
+        for i in range(self.nEdges):
+            print("%6d : %4d %4d : %4d %4d" % (i,*self.edges[i]))
 
 # -------------------------------------------------------------------------
         
 class Tsunami(object):
     
-    def __init__(self,fileName,U,V,E):
-        self.R = 6371220
-        self.gamma = 10e-7;
-        self.g = 9.81;
-        self.omega = 2*np.pi / 86400;
-        self.mesh   = Mesh(fileName,self.R);
-        self.size   = self.mesh.nElem;
-        self.edges  = Edges(self.mesh);
-        self.U      = U
-        self.V      = V
-        self.E      = E
-        self.iterU  = np.zeros([self.size,3])
-        self.iterV  = np.zeros([self.size,3])
-        self.iterE  = np.zeros([self.size,3])
-        self.rule1D = IntegrationRule("Edge",2);
-        self.rule2D = IntegrationRule("Triangle",3);
-        self.mapEdgeLeft = np.zeros((self.edges.nEdges,3),dtype=np.int)
-        self.mapEdgeRight = np.zeros((self.edges.nEdges,3),dtype=np.int)
-        for iEdge in range(self.edges.nBoundary):
-          myEdge = self.edges.edges[iEdge]
-          elementLeft  = myEdge[2]
-          nodesLeft    = self.mesh.elem[elementLeft]
-          self.mapEdgeLeft[iEdge,0]  = elementLeft
-          self.mapEdgeLeft[iEdge,1:3]  = [ np.nonzero(nodesLeft  == myEdge[j])[0][0] for j in range(2)]
-        for iEdge in range(self.edges.nBoundary,self.edges.nEdges):
-          myEdge = self.edges.edges[iEdge]
-          elementLeft  = myEdge[2]
-          elementRight = myEdge[3]
-          nodesLeft    = self.mesh.elem[elementLeft]
-          nodesRight   = self.mesh.elem[elementRight]
-          self.mapEdgeLeft[iEdge,0]  = elementLeft
-          self.mapEdgeRight[iEdge,0] = elementRight
-          self.mapEdgeLeft[iEdge,1:3]  = [ np.nonzero(nodesLeft  == myEdge[j])[0][0] for j in range(2)]
-          self.mapEdgeRight[iEdge,1:3] = [ np.nonzero(nodesRight == myEdge[j])[0][0] for j in range(2)]         
+    def __init__(self,fileName,U,V,E,dt):
+        self.Ainverse = np.array([[18.0,-6.0,-6.0],[-6.0,18.0,-6.0],[-6.0,-6.0,18.0]])
+        self.R        = 6371220
+        self.gamma    = 10e-7;
+        self.g        = 9.81;
+        self.omega    = 2 * np.pi / 86400;
+        self.dt       = dt
+        self.mesh     = Mesh(fileName,self.R);
+        self.edges    = Edges(self.mesh);
+        self.U        = U
+        self.V        = V
+        self.E        = E
+        self.iterU    = 0
+        self.iterV    = 0
+        self.iterE    = 0
+        self.rule1D   = IntegrationRule("Edge",2);
+        self.rule2D   = IntegrationRule("Triangle",3);
+        self.c        = np.sqrt(max(self.mesh.z) * self.g)
+        Tsunami.Edges = 0
+        Tsunami.Elements = 0
+#        self.iterU1  = np.zeros([self.size,3])
+#        self.iterV1  = np.zeros([self.size,3])
+#        self.iterE1  = np.zeros([self.size,3])
+#        self.iterU2  = np.zeros([self.size,3])
+#        self.iterV2  = np.zeros([self.size,3])
+#        self.iterE2  = np.zeros([self.size,3])
     
     def writeFile(self,fileName,iter):
         fileName = fileName % iter

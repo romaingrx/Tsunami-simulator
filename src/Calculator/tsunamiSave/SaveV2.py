@@ -98,9 +98,9 @@ def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     
 def iterCompute(Tsunami,dt):
     theSize = Tsunami.mesh.nElem
-    Tsunami.iterE = np.zeros([theSize,3])
-    Tsunami.iterU = np.zeros([theSize,3])
-    Tsunami.iterV = np.zeros([theSize,3])    
+    Tsunami.iterE = np.zeros([theSize,3],dtype=float)
+    Tsunami.iterU = np.zeros([theSize,3],dtype=float)
+    Tsunami.iterV = np.zeros([theSize,3],dtype=float)    
     computeElem(Tsunami);
     computeEdge(Tsunami);
     inverseMatrix(Tsunami);
@@ -221,7 +221,7 @@ def computeEdge(Tsunami):
     Uterm   = np.einsum('ab,a->ab',OBO, Nx)
     Vterm   = np.einsum('ab,a->ab',OBO, Ny)
     
-    goodOnes = np.ones(2 * theEdges.nEdges)
+    goodOnes = np.ones(2 * theEdges.nEdges,dtype=float)
     goodOnes[0:2 * nBoundary] -= 1
 
     iterE = Tsunami.iterE.ravel()
@@ -309,15 +309,15 @@ class Mesh(object):
             self.xElem    = self.x[self.elem]
             self.yElem    = self.y[self.elem]
             self.zElem    = self.z[self.elem]
-            self.dxdxsi   = self.x[self.elem] @ dphidxsi
-            self.dxdeta   = self.x[self.elem] @ dphideta
-            self.dydxsi   = self.y[self.elem] @ dphidxsi
-            self.dydeta   = self.y[self.elem] @ dphideta 
+            self.dxdxsi   = np.einsum('ab,b->a',self.xElem, dphidxsi)
+            self.dxdeta   = np.einsum('ab,b->a',self.xElem, dphideta)
+            self.dydxsi   = np.einsum('ab,b->a',self.yElem, dphidxsi)
+            self.dydeta   = np.einsum('ab,b->a',self.yElem, dphideta)
             self.xStar    = np.array((4*R*R*self.x) / (4*R*R + self.x*self.x + self.y*self.y))
             self.yStar    = np.array((4*R*R*self.y) / (4*R*R + self.x*self.x + self.y*self.y))
-            self.xh       = self.x[self.elem] @ phi
-            self.yh       = self.y[self.elem] @ phi
-            self.zh       = self.z[self.elem] @ phi
+            self.xh       = np.einsum('ab,bc->ac',self.xElem,phi)
+            self.yh       = np.einsum('ab,bc->ac',self.yElem,phi)
+            self.zh       = np.einsum('ab,bc->ac',self.zElem,phi)
             self.jac      = abs(self.dxdxsi*self.dydeta - self.dydxsi*self.dxdeta)
             self.dphidx   = (np.outer(np.ones(self.nElem),dphidxsi) * np.outer(self.dydeta,np.ones(3)) - np.outer(np.ones(self.nElem),dphideta) * np.outer(self.dydxsi,np.ones(3))) / np.outer(self.jac,np.ones(3));
             self.dphidy   = (np.outer(np.ones(self.nElem),dphideta) * np.outer(self.dxdxsi,np.ones(3)) - np.outer(np.ones(self.nElem),dphidxsi) * np.outer(self.dxdeta,np.ones(3))) / np.outer(self.jac,np.ones(3));
@@ -387,9 +387,9 @@ class Edges(object):
     self.jac = np.sqrt(self.dx*self.dx + self.dy*self.dy)
     self.nx  =   self.dy / self.jac
     self.ny  = - self.dx / self.jac
-    self.xh  = self.mesh.x[self.edges[:,0:2]] @ phi
-    self.yh  = self.mesh.y[self.edges[:,0:2]] @ phi
-    self.zh  = self.mesh.z[self.edges[:,0:2]] @ phi
+    self.xh  = np.einsum('ab,bc->ac',self.mesh.x[self.edges[:,0:2]],phi)
+    self.yh  = np.einsum('ab,bc->ac',self.mesh.y[self.edges[:,0:2]],phi)
+    self.zh  = np.einsum('ab,bc->ac',self.mesh.z[self.edges[:,0:2]],phi)
     self.term= (4*self.mesh.R*self.mesh.R + self.xh*self.xh + self.yh*self.yh)/(4*self.mesh.R*self.mesh.R)
 
     def printf(self):
