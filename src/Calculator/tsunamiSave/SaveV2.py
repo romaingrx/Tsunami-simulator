@@ -87,7 +87,7 @@ def initialConditionOkada(x,y) :
 def compute(theFile,theResultFiles,U,V,E,dt,nIter,nSave):
     theTsunami = Tsunami(theFile,U,V,E);
     for n in range(nIter):
-#        print(n)
+        print(n)
         iterCompute(theTsunami,dt);
         if ((n % nSave) == 0):
             theTsunami.writeFile(theResultFiles, n)
@@ -100,24 +100,12 @@ def iterCompute(Tsunami,dt):
     theSize = Tsunami.mesh.nElem
     Tsunami.iterE = np.zeros([theSize,3])
     Tsunami.iterU = np.zeros([theSize,3])
-    Tsunami.iterV = np.zeros([theSize,3])
-    
-#    threadElem = Thread(target = computeElem,kwargs=dict(Tsunami = Tsunami));
-#    threadEdges = Thread(target = computeEdge,kwargs=dict(Tsunami = Tsunami));
-#    threadElem.start()
-#    threadEdges.start()
-#    threadElem.join()
-#    threadEdges.join()
-#    await mutex.acquire()
-#    Tsunami.iterE = Tsunami.iterE1 + Tsunami.iterE2
-#    Tsunami.iterU = Tsunami.iterU1 + Tsunami.iterU2
-#    Tsunami.iterV = Tsunami.iterV1 + Tsunami.iterV2
-    
+    Tsunami.iterV = np.zeros([theSize,3])    
     computeElem(Tsunami);
     computeEdge(Tsunami);
     inverseMatrix(Tsunami);
     Tsunami.E += np.einsum(',ab->ab', dt, Tsunami.iterE)
-#    print(Tsunami.E[27])
+    print(Tsunami.E[27])
     Tsunami.U += np.einsum(',ab->ab', dt, Tsunami.iterU)
     Tsunami.V += np.einsum(',ab->ab', dt, Tsunami.iterV)
     return 
@@ -265,11 +253,11 @@ def computeEdge(Tsunami):
 def inverseMatrix(Tsunami):
     theMesh  = Tsunami.mesh
     Ainverse = Tsunami.Ainverse
-    JacAdit  = np.outer(theMesh.jacAdit,np.ones(3))
+    JacAdit  = theMesh.jacAdit
     
-    Tsunami.iterE = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterE, Ainverse), JacAdit)
-    Tsunami.iterU = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterU, Ainverse), JacAdit)
-    Tsunami.iterV = np.einsum('ab,ab->ab',np.einsum('ab,bc->ac',Tsunami.iterV, Ainverse), JacAdit)
+    Tsunami.iterE = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',Tsunami.iterE, Ainverse), JacAdit)
+    Tsunami.iterU = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',Tsunami.iterU, Ainverse), JacAdit)
+    Tsunami.iterV = np.einsum('ab,a->ab',np.einsum('ab,bc->ac',Tsunami.iterV, Ainverse), JacAdit)
     return 
 
 # -------------------------------------------------------------------------
@@ -336,7 +324,7 @@ class Mesh(object):
             self.sinLat   = (4*R*R - self.xh*self.xh - self.yh*self.yh) / (4*R*R + self.xh*self.xh + self.yh*self.yh)
             self.term     = (4*R*R+self.xh*self.xh+self.yh*self.yh)/(4*R*R)        
             self.f        = 2 * self.omega * self.sinLat  
-            self.jacAdit  = 1 / abs((self.xElem[:,0]-self.xElem[:,1]) * (self.yElem[:,0]-self.yElem[:,2]) - (self.xElem[:,0]-self.xElem[:,2]) * (self.yElem[:,0]-self.yElem[:,1])) 
+            self.jacAdit  = 1 / self.jac
     def printf(self):
         print("Number of nodes %d" % self.nNode)
         print("")
@@ -429,12 +417,6 @@ class Tsunami(object):
         self.iterU  = 0
         self.iterV  = 0
         self.iterE  = 0
-#        self.iterU1  = np.zeros([self.size,3])
-#        self.iterV1  = np.zeros([self.size,3])
-#        self.iterE1  = np.zeros([self.size,3])
-#        self.iterU2  = np.zeros([self.size,3])
-#        self.iterV2  = np.zeros([self.size,3])
-#        self.iterE2  = np.zeros([self.size,3])
         self.rule1D = IntegrationRule("Edge",2);
         self.rule2D = IntegrationRule("Triangle",3);
     
