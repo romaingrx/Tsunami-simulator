@@ -1,5 +1,9 @@
 # Tsunami
 
+
+<center><img src="https://media.giphy.com/media/mBpjjlMOYPyNK8rjp3/giphy.gif" alt=""  width=700/></center>
+
+
 Ce projet a été réalisé pour le cours MECA1120 donné par Monsieur Vincent Legat (UCL) et a pour but de simuler un tsunami par le biais des éléments finis et de la méthode de Galerkin discontinue.
 
 Le language utilisé est Python (Anaconda-Spyder Version 3.3.2)
